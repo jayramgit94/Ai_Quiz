@@ -16,7 +16,7 @@ const {
 const router = express.Router();
 
 // ─── FILE UPLOAD CONFIG ───
-const uploadDir = path.join(__dirname, "..", "uploads");
+const uploadDir = path.join(process.env.VERCEL ? "/tmp" : __dirname + "/..", "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }

@@ -32,19 +32,29 @@ const PORT = process.env.PORT || 5000;
 const MONGODB_URI =
   process.env.MONGODB_URI || "mongodb://localhost:27017/ai_quiz";
 
-mongoose
-  .connect(MONGODB_URI)
-  .then(() => {
+let isConnected = false;
+
+async function connectDB() {
+  if (isConnected) return;
+  try {
+    await mongoose.connect(MONGODB_URI);
+    isConnected = true;
     console.log("✅ MongoDB connected");
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err.message);
+  }
+}
+
+// Connect on import (for serverless warm starts)
+connectDB();
+
+// Only start listening when run directly (not on Vercel)
+if (!process.env.VERCEL) {
+  connectDB().then(() => {
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
-  })
-  .catch((err) => {
-    console.error("❌ MongoDB connection error:", err.message);
-    // Start server anyway for development without DB
-    console.log("⚠️  Starting server without MongoDB...");
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT} (no DB)`);
-    });
   });
+}
+
+module.exports = app;
