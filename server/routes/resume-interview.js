@@ -16,7 +16,10 @@ const {
 const router = express.Router();
 
 // ─── FILE UPLOAD CONFIG ───
-const uploadDir = path.join(process.env.VERCEL ? "/tmp" : __dirname + "/..", "uploads");
+const uploadDir = path.join(
+  process.env.VERCEL ? "/tmp" : __dirname + "/..",
+  "uploads",
+);
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -72,7 +75,8 @@ router.post("/upload", upload.single("resume"), async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const { userName, role, difficulty, totalQuestions, timePerQuestion } = req.body;
+    const { userName, role, difficulty, totalQuestions, timePerQuestion } =
+      req.body;
 
     if (!userName || !userName.trim()) {
       return res.status(400).json({ error: "userName is required" });
@@ -100,10 +104,7 @@ router.post("/upload", upload.single("resume"), async (req, res) => {
     await session.save();
 
     // Extract text from file
-    const rawText = await extractText(
-      req.file.path,
-      req.file.originalname
-    );
+    const rawText = await extractText(req.file.path, req.file.originalname);
 
     if (!rawText || rawText.trim().length < 50) {
       session.status = "ready";
@@ -111,7 +112,8 @@ router.post("/upload", upload.single("resume"), async (req, res) => {
       // Clean up uploaded file
       fs.unlink(req.file.path, () => {});
       return res.status(400).json({
-        error: "Could not extract enough text from the resume. Please upload a valid PDF or DOCX.",
+        error:
+          "Could not extract enough text from the resume. Please upload a valid PDF or DOCX.",
       });
     }
 
@@ -170,7 +172,7 @@ router.post("/generate-questions", async (req, res) => {
 
     const questions = await generateResumeQuestions(
       session.resume.parsed,
-      session.config
+      session.config,
     );
 
     session.questions = questions;
@@ -191,7 +193,9 @@ router.post("/generate-questions", async (req, res) => {
     });
   } catch (err) {
     console.error("Question generation error:", err);
-    res.status(500).json({ error: err.message || "Failed to generate questions" });
+    res
+      .status(500)
+      .json({ error: err.message || "Failed to generate questions" });
   }
 });
 
@@ -203,7 +207,9 @@ router.post("/evaluate-answer", async (req, res) => {
     const { sessionId, questionIndex, transcript, duration } = req.body;
 
     if (!sessionId || questionIndex === undefined) {
-      return res.status(400).json({ error: "sessionId and questionIndex required" });
+      return res
+        .status(400)
+        .json({ error: "sessionId and questionIndex required" });
     }
 
     const session = await ResumeInterview.findOne({ sessionId });
@@ -221,7 +227,7 @@ router.post("/evaluate-answer", async (req, res) => {
       question.question,
       transcript || "",
       question.expectedTopics || [],
-      question.category
+      question.category,
     );
 
     // Store response
@@ -238,7 +244,7 @@ router.post("/evaluate-answer", async (req, res) => {
 
     // Check if already answered (update) or new
     const existingIdx = session.responses.findIndex(
-      (r) => r.questionIndex === questionIndex
+      (r) => r.questionIndex === questionIndex,
     );
     if (existingIdx >= 0) {
       session.responses[existingIdx] = response;
@@ -309,13 +315,20 @@ router.post("/complete", async (req, res) => {
 
     // Calculate scores
     const responses = session.responses || [];
-    const totalDuration = responses.reduce((sum, r) => sum + (r.duration || 0), 0);
+    const totalDuration = responses.reduce(
+      (sum, r) => sum + (r.duration || 0),
+      0,
+    );
 
-    const technicalResponses = responses.filter((r) => r.category === "technical");
+    const technicalResponses = responses.filter(
+      (r) => r.category === "technical",
+    );
     const technicalScore =
       technicalResponses.length > 0
-        ? technicalResponses.reduce((s, r) => s + (r.evaluation?.score || 0), 0) /
-          technicalResponses.length
+        ? technicalResponses.reduce(
+            (s, r) => s + (r.evaluation?.score || 0),
+            0,
+          ) / technicalResponses.length
         : 0;
 
     const commScores = responses.map((r) => r.evaluation?.communication || 0);
@@ -326,7 +339,8 @@ router.post("/complete", async (req, res) => {
 
     const avgWordCount =
       responses.length > 0
-        ? responses.reduce((s, r) => s + (r.wordCount || 0), 0) / responses.length
+        ? responses.reduce((s, r) => s + (r.wordCount || 0), 0) /
+          responses.length
         : 0;
     const confidenceScore = Math.min(100, avgWordCount * 2);
 
@@ -334,7 +348,7 @@ router.post("/complete", async (req, res) => {
     const summary = await generateInterviewSummary(
       session.resume.parsed,
       responses,
-      session.config
+      session.config,
     );
 
     session.results = {
@@ -372,7 +386,9 @@ router.post("/complete", async (req, res) => {
     });
   } catch (err) {
     console.error("Interview completion error:", err);
-    res.status(500).json({ error: err.message || "Failed to complete interview" });
+    res
+      .status(500)
+      .json({ error: err.message || "Failed to complete interview" });
   }
 });
 

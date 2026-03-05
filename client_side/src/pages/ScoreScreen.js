@@ -9,7 +9,7 @@ export default function ScoreScreen() {
   const location = useLocation();
   const { user } = useAuth();
   const toast = useToast();
-  const { results, userName, topic, xpData } = location.state || {};
+  const { results, userName, xpData } = location.state || {};
 
   useEffect(() => {
     if (xpData?.newAchievements?.length) {

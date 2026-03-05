@@ -26,7 +26,6 @@ export default function Navbar() {
     { path: "/dashboard", label: "Dashboard", icon: "📊" },
   ];
 
-  const xpForNextLevel = (user?.level || 1) * 100;
   const xpProgress = (((user?.xp || 0) % 100) / 100) * 100;
 
   return (
