@@ -1,0 +1,328 @@
+const express = require("express");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+
+const router = express.Router();
+
+const JWT_SECRET = process.env.JWT_SECRET || "ai_quiz_secret_key_2024";
+const JWT_EXPIRES = "7d";
+
+// Middleware to verify JWT
+function authMiddleware(req, res, next) {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.userId = decoded.userId;
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+
+// ─── POST /api/auth/register ───
+router.post("/register", async (req, res) => {
+  try {
+    const { email, password, displayName, country } = req.body;
+
+    if (!email || !password || !displayName) {
+      return res
+        .status(400)
+        .json({ error: "Email, password, and name are required" });
+    }
+
+    if (password.length < 6) {
+      return res
+        .status(400)
+        .json({ error: "Password must be at least 6 characters" });
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase().trim() });
+    if (existing) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
+
+    const user = await User.create({
+      email: email.toLowerCase().trim(),
+      password,
+      displayName: displayName.trim(),
+      country: country || "",
+    });
+
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, {
+      expiresIn: JWT_EXPIRES,
+    });
+
+    res.status(201).json({
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        country: user.country,
+        xp: user.xp,
+        level: user.level,
+        streak: user.streak,
+        achievements: user.achievements,
+        theme: user.theme,
+        totalQuizzes: user.totalQuizzes,
+        totalInterviews: user.totalInterviews,
+        bestAccuracy: user.bestAccuracy,
+      },
+    });
+  } catch (err) {
+    console.error("Register error:", err.message);
+    res.status(500).json({ error: "Registration failed" });
+  }
+});
+
+// ─── POST /api/auth/login ───
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const isValid = await user.comparePassword(password);
+    if (!isValid) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, {
+      expiresIn: JWT_EXPIRES,
+    });
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        displayName: user.displayName,
+        avatar: user.avatar,
+        country: user.country,
+        xp: user.xp,
+        level: user.level,
+        streak: user.streak,
+        achievements: user.achievements,
+        theme: user.theme,
+        totalQuizzes: user.totalQuizzes,
+        totalCorrect: user.totalCorrect,
+        totalInterviews: user.totalInterviews,
+        bestAccuracy: user.bestAccuracy,
+        topicStats: user.topicStats,
+        accuracyHistory: user.accuracyHistory,
+      },
+    });
+  } catch (err) {
+    console.error("Login error:", err.message);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// ─── GET /api/auth/me ───
+router.get("/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("-password");
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({ user });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch user" });
+  }
+});
+
+// ─── PUT /api/auth/profile ───
+router.put("/profile", authMiddleware, async (req, res) => {
+  try {
+    const { displayName, country, theme } = req.body;
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (displayName) user.displayName = displayName.trim();
+    if (country !== undefined) user.country = country;
+    if (theme) user.theme = theme;
+
+    await user.save();
+    res.json({
+      user: {
+        displayName: user.displayName,
+        country: user.country,
+        theme: user.theme,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update profile" });
+  }
+});
+
+// ─── POST /api/auth/record-quiz ───
+// Record quiz results to user profile (called after quiz submission)
+router.post("/record-quiz", authMiddleware, async (req, res) => {
+  try {
+    const { topic, accuracy, score, totalQuestions, difficulty } = req.body;
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Update stats
+    user.totalQuizzes += 1;
+    user.totalCorrect += score || 0;
+    user.totalQuestions += totalQuestions || 0;
+    if (accuracy > user.bestAccuracy) user.bestAccuracy = accuracy;
+
+    // Update topic stats
+    const topicIdx = user.topicStats.findIndex(
+      (t) => t.topic.toLowerCase() === topic.toLowerCase(),
+    );
+    if (topicIdx >= 0) {
+      const ts = user.topicStats[topicIdx];
+      ts.quizCount += 1;
+      ts.totalCorrect += score || 0;
+      ts.totalQuestions += totalQuestions || 0;
+      ts.avgAccuracy = Math.round((ts.totalCorrect / ts.totalQuestions) * 100);
+      ts.lastPlayed = new Date();
+    } else {
+      user.topicStats.push({
+        topic,
+        quizCount: 1,
+        totalCorrect: score || 0,
+        totalQuestions: totalQuestions || 0,
+        avgAccuracy: accuracy || 0,
+        lastPlayed: new Date(),
+      });
+    }
+
+    // Add accuracy history point
+    user.accuracyHistory.push({
+      date: new Date().toISOString().split("T")[0],
+      accuracy: accuracy || 0,
+      topic,
+    });
+    // Keep last 100 entries
+    if (user.accuracyHistory.length > 100) {
+      user.accuracyHistory = user.accuracyHistory.slice(-100);
+    }
+
+    // Award XP
+    let xpEarned = 10; // base XP for completing
+    if (accuracy >= 90) xpEarned += 20;
+    else if (accuracy >= 70) xpEarned += 10;
+    else if (accuracy >= 50) xpEarned += 5;
+    if (difficulty === "hard") xpEarned += 10;
+    else if (difficulty === "medium") xpEarned += 5;
+
+    const newAchievements = user.addXP(xpEarned, "quiz");
+    await user.save();
+
+    res.json({
+      xpEarned,
+      totalXP: user.xp,
+      level: user.level,
+      streak: user.streak,
+      newAchievements,
+      user: {
+        xp: user.xp,
+        level: user.level,
+        streak: user.streak,
+        totalQuizzes: user.totalQuizzes,
+        totalCorrect: user.totalCorrect,
+        bestAccuracy: user.bestAccuracy,
+        achievements: user.achievements,
+        topicStats: user.topicStats,
+      },
+    });
+  } catch (err) {
+    console.error("Record quiz error:", err.message);
+    res.status(500).json({ error: "Failed to record quiz" });
+  }
+});
+
+// ─── POST /api/auth/record-interview ───
+router.post("/record-interview", authMiddleware, async (req, res) => {
+  try {
+    const { overallScore } = req.body;
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    user.totalInterviews += 1;
+    let xpEarned = 25;
+    if (overallScore >= 80) xpEarned += 25;
+    else if (overallScore >= 60) xpEarned += 15;
+
+    const newAchievements = user.addXP(xpEarned, "interview");
+    await user.save();
+
+    res.json({
+      xpEarned,
+      totalXP: user.xp,
+      level: user.level,
+      newAchievements,
+      user: {
+        xp: user.xp,
+        level: user.level,
+        totalInterviews: user.totalInterviews,
+        achievements: user.achievements,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to record interview" });
+  }
+});
+
+// ─── GET /api/auth/leaderboard ───
+// User-based leaderboard with XP
+router.get("/leaderboard", async (req, res) => {
+  try {
+    const users = await User.find({ totalQuizzes: { $gt: 0 } })
+      .select(
+        "displayName country xp level streak totalQuizzes bestAccuracy achievements",
+      )
+      .sort({ xp: -1 })
+      .limit(50)
+      .lean();
+
+    res.json(users);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
+// ─── DELETE /api/auth/clear-data ───
+// Clear all user data (stats) but keep account
+router.delete("/clear-data", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    user.xp = 0;
+    user.level = 1;
+    user.streak = 0;
+    user.lastActiveDate = "";
+    user.achievements = [];
+    user.totalQuizzes = 0;
+    user.totalCorrect = 0;
+    user.totalQuestions = 0;
+    user.totalInterviews = 0;
+    user.bestAccuracy = 0;
+    user.topicStats = [];
+    user.accuracyHistory = [];
+
+    await user.save();
+    res.json({ success: true, message: "All data cleared" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to clear data" });
+  }
+});
+
+module.exports = router;
+module.exports.authMiddleware = authMiddleware;

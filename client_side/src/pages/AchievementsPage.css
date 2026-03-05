@@ -1,0 +1,137 @@
+.achievements-page {
+  min-height: 100vh;
+  padding-bottom: 60px;
+}
+
+.ach-header {
+  text-align: center;
+  padding: 40px 0 24px;
+}
+
+.ach-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.ach-header h1 {
+  margin-bottom: 4px;
+}
+
+.ach-header p {
+  color: var(--text-secondary);
+}
+
+.ach-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.ach-stat {
+  text-align: center;
+  padding: 20px 16px;
+}
+
+.ach-stat-value {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.ach-stat-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ach-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.ach-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.ach-card.locked {
+  opacity: 0.5;
+}
+
+.ach-card.unlocked {
+  border-color: rgba(108, 99, 255, 0.2);
+}
+
+.ach-card.unlocked::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-light));
+}
+
+.ach-card-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+  width: 48px;
+  text-align: center;
+}
+
+.ach-card-icon.grayscale {
+  filter: grayscale(1);
+  opacity: 0.5;
+}
+
+.ach-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ach-card-info h3 {
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+
+.ach-card-info p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.ach-card-xp {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.ach-card-date {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.ach-card-lock {
+  font-size: 1rem;
+  opacity: 0.5;
+}
+
+@media (max-width: 768px) {
+  .ach-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ach-grid {
+    grid-template-columns: 1fr;
+  }
+}
