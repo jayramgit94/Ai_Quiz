@@ -1,4 +1,4 @@
-/* ═══ SCORE SCREEN ═══ */
+/* ═══ SCORE SCREEN — Premium ═══ */
 
 .score-page {
   min-height: 100vh;
@@ -10,11 +10,38 @@
   text-align: center;
   padding: 48px 32px;
   margin-bottom: 20px;
-  background: linear-gradient(135deg, var(--bg-card), var(--bg-elevated));
+  background: linear-gradient(
+    135deg,
+    var(--bg-glass),
+    rgba(124, 106, 255, 0.03)
+  );
+  backdrop-filter: blur(var(--blur-md));
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+}
+
+.score-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(124, 106, 255, 0.2),
+    transparent
+  );
+  pointer-events: none;
 }
 
 .score-emoji {
-  font-size: 3.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 12px;
 }
 
@@ -27,6 +54,7 @@
   font-size: 3rem;
   font-weight: 900;
   margin-bottom: 32px;
+  letter-spacing: -0.02em;
 }
 
 /* Score Rings */
@@ -62,10 +90,10 @@
 }
 
 .ring-text {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.06em;
 }
 
 /* Analysis */
@@ -74,6 +102,14 @@
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+.analysis-card {
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  backdrop-filter: blur(var(--blur-sm));
 }
 
 .analysis-card h3 {
@@ -90,6 +126,10 @@
 /* Confidence */
 .confidence-card {
   margin-bottom: 16px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
 }
 
 .confidence-card h3 {
@@ -104,9 +144,15 @@
 
 .conf-stat {
   text-align: center;
-  padding: 16px;
-  background: var(--bg);
+  padding: 20px 16px;
+  background: var(--bg-card);
   border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  transition: all var(--transition-base);
+}
+
+.conf-stat:hover {
+  border-color: var(--border-hover);
 }
 
 .conf-value {
@@ -119,7 +165,7 @@
 
 .conf-label {
   display: block;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   margin-bottom: 2px;
 }
@@ -133,6 +179,10 @@
 /* Next card */
 .next-card {
   margin-bottom: 16px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
 }
 
 .next-card h3 {
@@ -142,7 +192,6 @@
   margin-bottom: 12px;
   font-size: 0.9rem;
 }
-
 .next-diff .badge {
   font-size: 1rem;
   padding: 8px 20px;
@@ -151,6 +200,10 @@
 /* Detailed results */
 .detailed-card {
   margin-bottom: 28px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
 }
 
 .detailed-card h3 {
@@ -160,20 +213,23 @@
 .review-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .review-item {
   padding: 16px;
-  background: var(--bg);
+  background: var(--bg-card);
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--border);
+  transition: all var(--transition-fast);
 }
 
+.review-item:hover {
+  background: var(--bg-card-hover);
+}
 .review-item.correct {
   border-left-color: var(--success);
 }
-
 .review-item.wrong {
   border-left-color: var(--error);
 }
@@ -187,12 +243,12 @@
 
 .review-num {
   font-weight: 700;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
 }
 
 .review-status {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
 }
 
@@ -207,13 +263,13 @@
   font-size: 0.9rem;
   color: var(--text);
   margin-bottom: 8px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .review-answers {
   display: flex;
   gap: 20px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-secondary);
 }
 
@@ -226,22 +282,22 @@
 
 .xp-earned-badge {
   display: inline-flex;
-  padding: 8px 24px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-light));
+  padding: 10px 28px;
+  background: var(--primary-gradient);
   color: white;
   font-weight: 700;
   font-size: 1.2rem;
-  border-radius: 40px;
-  animation: scaleIn 0.5s ease 0.3s both;
+  border-radius: var(--radius-full);
+  box-shadow: 0 4px 24px rgba(124, 106, 255, 0.3);
+  animation: scaleIn 0.5s var(--ease-out) 0.3s both;
 }
 
 .xp-level-info {
   margin-top: 8px;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
 }
 
-/* Actions */
 .score-actions {
   display: flex;
   gap: 12px;

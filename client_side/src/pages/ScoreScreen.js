@@ -1,3 +1,4 @@
+import { Target, ThumbsUp, TrendingUp, Trophy, Zap } from "lucide-react";
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -47,11 +48,14 @@ export default function ScoreScreen() {
     detailedResults,
   } = results;
 
-  const getScoreEmoji = () => {
-    if (accuracy >= 90) return "🏆";
-    if (accuracy >= 70) return "🎉";
-    if (accuracy >= 50) return "👍";
-    return "💪";
+  const getScoreIcon = () => {
+    if (accuracy >= 90)
+      return <Trophy size={52} style={{ color: "var(--warning)" }} />;
+    if (accuracy >= 70)
+      return <Zap size={52} style={{ color: "var(--primary)" }} />;
+    if (accuracy >= 50)
+      return <ThumbsUp size={52} style={{ color: "var(--success)" }} />;
+    return <TrendingUp size={52} style={{ color: "var(--error)" }} />;
   };
 
   const getScoreMessage = () => {
@@ -66,7 +70,7 @@ export default function ScoreScreen() {
       <div className="container-sm">
         {/* Hero Score */}
         <div className="score-hero card animate-scale-in">
-          <div className="score-emoji">{getScoreEmoji()}</div>
+          <div className="score-emoji">{getScoreIcon()}</div>
           <h2 className="score-message">{getScoreMessage()}</h2>
           <div className="score-big">
             {score}/{totalQuestions}
@@ -179,7 +183,17 @@ export default function ScoreScreen() {
         <div className="analysis-row">
           {strongTopics?.length > 0 && (
             <div className="card analysis-card animate-fade-in-up delay-1">
-              <h3>💪 Strong Areas</h3>
+              <h3>
+                <TrendingUp
+                  size={15}
+                  style={{
+                    display: "inline",
+                    verticalAlign: "middle",
+                    marginRight: 5,
+                  }}
+                />
+                Strong Areas
+              </h3>
               <div className="topic-tags">
                 {strongTopics.map((t, i) => (
                   <span key={i} className="badge badge-success">
@@ -206,7 +220,17 @@ export default function ScoreScreen() {
         {/* Confidence Stats */}
         {confidenceStats && (
           <div className="card confidence-card animate-fade-in-up delay-3">
-            <h3>🎯 Confidence Analysis</h3>
+            <h3>
+              <Target
+                size={15}
+                style={{
+                  display: "inline",
+                  verticalAlign: "middle",
+                  marginRight: 5,
+                }}
+              />
+              Confidence Analysis
+            </h3>
             <div className="confidence-grid">
               <div className="conf-stat">
                 <span className="conf-value">

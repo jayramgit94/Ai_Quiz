@@ -19,7 +19,7 @@ router.post("/start", async (req, res) => {
     const currentQuestion = await generateInterviewQuestion(
       topic.trim(),
       difficulty,
-      1
+      1,
     );
 
     res.json({
@@ -38,7 +38,14 @@ router.post("/start", async (req, res) => {
 // Submit an answer and get evaluation + follow-up
 router.post("/answer", async (req, res) => {
   try {
-    const { topic, previousQuestion, userAnswer, questionNumber = 1 } = req.body;
+    const {
+      topic,
+      previousQuestion,
+      userAnswer,
+      questionNumber = 1,
+      options,
+      correctAnswer,
+    } = req.body;
 
     if (!topic || !previousQuestion || !userAnswer) {
       return res.status(400).json({
@@ -50,7 +57,9 @@ router.post("/answer", async (req, res) => {
       topic.trim(),
       previousQuestion,
       userAnswer,
-      questionNumber
+      questionNumber,
+      options,
+      correctAnswer,
     );
 
     res.json(result);

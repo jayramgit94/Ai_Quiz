@@ -1,3 +1,4 @@
+import { MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { startInterview, submitInterviewAnswer } from "../services/api";
@@ -38,6 +39,8 @@ export default function InterviewMode() {
         previousQuestion: currentQuestion.question,
         userAnswer: selectedAnswer,
         questionNumber,
+        options: currentQuestion.options,
+        correctAnswer: currentQuestion.correctAnswer,
       });
 
       setFeedback(res.data);
@@ -93,7 +96,9 @@ export default function InterviewMode() {
 
           <div className="card interview-setup animate-fade-in-up">
             <div className="setup-header">
-              <span className="setup-icon">💬</span>
+              <span className="setup-icon">
+                <MessageSquare size={30} />
+              </span>
               <h2>Interview Simulation</h2>
               <p>AI-powered mock interview with adaptive follow-up questions</p>
             </div>
@@ -165,7 +170,7 @@ export default function InterviewMode() {
 
   // ─── INTERVIEW SESSION ───
   return (
-    <div className="interview-page">
+    <div className="interview-page has-navbar">
       <div className="container-sm">
         <div className="interview-header animate-fade-in">
           <div className="interview-meta">
@@ -276,7 +281,7 @@ export default function InterviewMode() {
 
               <div className="explanation-box">
                 <div className="explanation-section">
-                  <div className="exp-header">💬 AI Feedback</div>
+                  <div className="exp-header">AI Feedback</div>
                   <p>{feedback.feedback}</p>
                 </div>
               </div>

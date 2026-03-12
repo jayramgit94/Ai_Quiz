@@ -1,45 +1,55 @@
+import {
+  Award,
+  BarChart2,
+  Brain,
+  Flame,
+  MessageSquare,
+  Mic,
+  Target,
+  Trophy,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "./LandingPage.css";
 
 const features = [
   {
-    icon: "🧠",
+    Icon: Brain,
     title: "AI-Generated Quizzes",
     desc: "Powered by Grok AI for technically accurate, high-quality questions.",
   },
   {
-    icon: "🎯",
+    Icon: Target,
     title: "Adaptive Difficulty",
     desc: "System auto-calibrates difficulty based on your performance.",
   },
   {
-    icon: "💬",
+    Icon: MessageSquare,
     title: "Interview Simulation",
     desc: "Mock interview mode with AI follow-up questions and evaluation.",
   },
   {
-    icon: "📊",
+    Icon: BarChart2,
     title: "Smart Analytics",
     desc: "Confidence tracking, weak topic detection, and speed scoring.",
   },
   {
-    icon: "🏆",
+    Icon: Trophy,
     title: "Daily Challenges",
     desc: "Fresh quiz every day with a resetting leaderboard.",
   },
   {
-    icon: "🔥",
+    Icon: Flame,
     title: "Topic Heatmap",
     desc: "Visual dashboard showing your learning progress across topics.",
   },
   {
-    icon: "🎤",
+    Icon: Mic,
     title: "Resume Interview",
     desc: "Upload your resume for AI-powered mock interviews with camera, speech-to-text & evaluation.",
   },
   {
-    icon: "🎖️",
+    Icon: Award,
     title: "XP & Achievements",
     desc: "Earn XP, level up, unlock achievements, and compete on the leaderboard.",
   },
@@ -126,7 +136,9 @@ export default function LandingPage() {
               key={i}
               className={`feature-card card animate-fade-in-up delay-${(i % 5) + 1}`}
             >
-              <div className="feature-icon">{f.icon}</div>
+              <div className="feature-icon">
+                <f.Icon size={26} />
+              </div>
               <h3>{f.title}</h3>
               <p>{f.desc}</p>
             </div>

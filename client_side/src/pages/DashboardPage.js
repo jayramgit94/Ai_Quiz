@@ -1,3 +1,13 @@
+import {
+  BarChart2,
+  BookMarked,
+  BookOpen,
+  CheckCircle,
+  Flame,
+  Map,
+  Target,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -75,7 +85,9 @@ export default function DashboardPage() {
         </button>
 
         <div className="dash-header animate-fade-in-up">
-          <span className="dash-icon">📊</span>
+          <span className="dash-icon">
+            <BarChart2 size={36} />
+          </span>
           <h1>Learning Dashboard</h1>
           <p>Track your progress across topics</p>
         </div>
@@ -87,7 +99,15 @@ export default function DashboardPage() {
               <div className="user-xp-info">
                 <h3>{user.displayName}</h3>
                 <p>
-                  Level {user.level || 1} · {user.xp || 0} XP · 🔥{" "}
+                  Level {user.level || 1} · {user.xp || 0} XP ·{" "}
+                  <Flame
+                    size={13}
+                    style={{
+                      display: "inline",
+                      verticalAlign: "middle",
+                      marginRight: 2,
+                    }}
+                  />
                   {user.streak || 0} day streak
                 </p>
               </div>
@@ -95,7 +115,11 @@ export default function DashboardPage() {
                 className="btn btn-ghost btn-sm"
                 onClick={handleClearData}
               >
-                🗑️ Clear All Data
+                <Trash2
+                  size={13}
+                  style={{ marginRight: 5, verticalAlign: "middle" }}
+                />
+                Clear All Data
               </button>
             </div>
             <div className="progress-bar" style={{ marginTop: 12 }}>
@@ -149,28 +173,36 @@ export default function DashboardPage() {
             {/* Overall Stats */}
             <div className="stats-grid animate-fade-in-up delay-2">
               <div className="stat-card card">
-                <span className="stat-card-icon">📝</span>
+                <span className="stat-card-icon">
+                  <BookOpen size={20} />
+                </span>
                 <span className="stat-card-value">
                   {progress?.overallStats?.totalQuizzes || 0}
                 </span>
                 <span className="stat-card-label">Total Quizzes</span>
               </div>
               <div className="stat-card card">
-                <span className="stat-card-icon">✅</span>
+                <span className="stat-card-icon">
+                  <CheckCircle size={20} />
+                </span>
                 <span className="stat-card-value">
                   {progress?.overallStats?.totalCorrect || 0}
                 </span>
                 <span className="stat-card-label">Correct Answers</span>
               </div>
               <div className="stat-card card">
-                <span className="stat-card-icon">🎯</span>
+                <span className="stat-card-icon">
+                  <Target size={20} />
+                </span>
                 <span className="stat-card-value">
                   {progress?.overallStats?.averageAccuracy || 0}%
                 </span>
                 <span className="stat-card-label">Avg Accuracy</span>
               </div>
               <div className="stat-card card">
-                <span className="stat-card-icon">📚</span>
+                <span className="stat-card-icon">
+                  <BookMarked size={20} />
+                </span>
                 <span className="stat-card-value">
                   {progress?.topicHistory?.length || 0}
                 </span>
@@ -181,7 +213,17 @@ export default function DashboardPage() {
             {/* Topic Heatmap */}
             {progress?.topicHistory?.length > 0 && (
               <div className="card heatmap-card animate-fade-in-up delay-3">
-                <h3>🗺️ Topic Heatmap</h3>
+                <h3>
+                  <Map
+                    size={16}
+                    style={{
+                      display: "inline",
+                      verticalAlign: "middle",
+                      marginRight: 6,
+                    }}
+                  />
+                  Topic Heatmap
+                </h3>
                 <p className="heatmap-sub">
                   Your learning intensity across topics
                 </p>
@@ -237,7 +279,9 @@ export default function DashboardPage() {
                 className="card empty-state animate-fade-in-up"
                 style={{ textAlign: "center", padding: 48 }}
               >
-                <div style={{ fontSize: "3rem", marginBottom: 12 }}>📭</div>
+                <div style={{ marginBottom: 12, color: "var(--text-muted)" }}>
+                  <BookOpen size={40} />
+                </div>
                 <h3>No Data Yet</h3>
                 <p>Take some quizzes to see your progress here!</p>
                 <button

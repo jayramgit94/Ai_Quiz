@@ -1,0 +1,26 @@
+{
+  "name": "ai_quiz",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --names \"SERVER,CLIENT\" --prefix-colors \"cyan,magenta\" \"npm run dev --prefix server\" \"npm start --prefix client_side\"",
+    "build": "npm run build --prefix client_side",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jayramgit94/Ai_Quiz.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/jayramgit94/Ai_Quiz/issues"
+  },
+  "homepage": "https://github.com/jayramgit94/Ai_Quiz#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

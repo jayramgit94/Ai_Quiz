@@ -1,3 +1,4 @@
+import { Rocket } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -53,7 +54,9 @@ export default function QuizSetup() {
 
         <div className="setup-card card animate-fade-in-up">
           <div className="setup-header">
-            <span className="setup-icon">🚀</span>
+            <span className="setup-icon">
+              <Rocket size={30} />
+            </span>
             <h2>Quiz Setup</h2>
             <p>Configure your AI-powered quiz session</p>
           </div>

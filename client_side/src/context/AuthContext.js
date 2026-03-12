@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
       try {
         setUser(JSON.parse(cached));
       } catch {
-        /* ignore */
+        localStorage.removeItem("user");
       }
       // Verify token is still valid
       getMe()

@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
 const ResumeInterview = require("../models/ResumeInterview");
+const { authMiddleware } = require("./auth");
 const {
   parseResumeContent,
   generateResumeQuestions,
@@ -69,86 +70,93 @@ async function extractText(filePath, fileType) {
 // ═══════════════════════════════════════════════════════════
 // POST /upload - Upload resume, parse it, create session
 // ═══════════════════════════════════════════════════════════
-router.post("/upload", upload.single("resume"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
+router.post(
+  "/upload",
+  authMiddleware,
+  upload.single("resume"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
 
-    const { userName, role, difficulty, totalQuestions, timePerQuestion } =
-      req.body;
+      const { userName, role, difficulty, totalQuestions, timePerQuestion } =
+        req.body;
 
-    if (!userName || !userName.trim()) {
-      return res.status(400).json({ error: "userName is required" });
-    }
+      if (!userName || !userName.trim()) {
+        return res.status(400).json({ error: "userName is required" });
+      }
 
-    const sessionId = crypto.randomUUID();
+      const sessionId = crypto.randomUUID();
 
-    // Create initial session
-    const session = new ResumeInterview({
-      sessionId,
-      userName: userName.trim(),
-      resume: {
-        fileName: req.file.originalname,
-        fileType: path.extname(req.file.originalname).toLowerCase(),
-      },
-      config: {
-        role: role || "Software Engineer",
-        difficulty: difficulty || "medium",
-        totalQuestions: parseInt(totalQuestions) || 8,
-        timePerQuestion: parseInt(timePerQuestion) || 120,
-      },
-      status: "parsing",
-    });
+      // Create initial session
+      const session = new ResumeInterview({
+        sessionId,
+        userName: userName.trim(),
+        resume: {
+          fileName: req.file.originalname,
+          fileType: path.extname(req.file.originalname).toLowerCase(),
+        },
+        config: {
+          role: role || "Software Engineer",
+          difficulty: difficulty || "medium",
+          totalQuestions: parseInt(totalQuestions) || 8,
+          timePerQuestion: parseInt(timePerQuestion) || 120,
+        },
+        status: "parsing",
+      });
 
-    await session.save();
+      await session.save();
 
-    // Extract text from file
-    const rawText = await extractText(req.file.path, req.file.originalname);
+      // Extract text from file
+      const rawText = await extractText(req.file.path, req.file.originalname);
 
-    if (!rawText || rawText.trim().length < 50) {
+      if (!rawText || rawText.trim().length < 50) {
+        session.status = "ready";
+        await session.save();
+        // Clean up uploaded file
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({
+          error:
+            "Could not extract enough text from the resume. Please upload a valid PDF or DOCX.",
+        });
+      }
+
+      // Parse resume with AI
+      const parsed = await parseResumeContent(rawText);
+
+      session.resume.rawText = rawText.substring(0, 10000);
+      session.resume.parsed = parsed;
       session.status = "ready";
       await session.save();
+
       // Clean up uploaded file
       fs.unlink(req.file.path, () => {});
-      return res.status(400).json({
-        error:
-          "Could not extract enough text from the resume. Please upload a valid PDF or DOCX.",
+
+      res.json({
+        sessionId,
+        status: "ready",
+        parsed: {
+          name: parsed.name,
+          skills: parsed.skills,
+          technologies: parsed.technologies,
+          projectCount: (parsed.projects || []).length,
+          experienceCount: (parsed.experience || []).length,
+          summary: parsed.summary,
+        },
       });
+    } catch (err) {
+      // Clean up file on error
+      if (req.file?.path) {
+        fs.unlink(req.file.path, () => {});
+      }
+      console.error("Resume upload error:", err);
+      res
+        .status(500)
+        .json({ error: err.message || "Failed to process resume" });
     }
-
-    // Parse resume with AI
-    const parsed = await parseResumeContent(rawText);
-
-    session.resume.rawText = rawText.substring(0, 10000);
-    session.resume.parsed = parsed;
-    session.status = "ready";
-    await session.save();
-
-    // Clean up uploaded file
-    fs.unlink(req.file.path, () => {});
-
-    res.json({
-      sessionId,
-      status: "ready",
-      parsed: {
-        name: parsed.name,
-        skills: parsed.skills,
-        technologies: parsed.technologies,
-        projectCount: (parsed.projects || []).length,
-        experienceCount: (parsed.experience || []).length,
-        summary: parsed.summary,
-      },
-    });
-  } catch (err) {
-    // Clean up file on error
-    if (req.file?.path) {
-      fs.unlink(req.file.path, () => {});
-    }
-    console.error("Resume upload error:", err);
-    res.status(500).json({ error: err.message || "Failed to process resume" });
-  }
-});
+  },
+);
 
 // ═══════════════════════════════════════════════════════════
 // POST /generate-questions - Generate interview questions from parsed resume
@@ -212,6 +220,9 @@ router.post("/evaluate-answer", async (req, res) => {
         .json({ error: "sessionId and questionIndex required" });
     }
 
+    // Limit transcript length to prevent abuse
+    const safeTranscript = (transcript || "").substring(0, 10000);
+
     const session = await ResumeInterview.findOne({ sessionId });
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
@@ -225,7 +236,7 @@ router.post("/evaluate-answer", async (req, res) => {
     // Evaluate with AI
     const evaluation = await evaluateSpokenAnswer(
       question.question,
-      transcript || "",
+      safeTranscript,
       question.expectedTopics || [],
       question.category,
     );
@@ -236,8 +247,8 @@ router.post("/evaluate-answer", async (req, res) => {
       question: question.question,
       category: question.category,
       expectedTopics: question.expectedTopics,
-      transcript: transcript || "",
-      wordCount: (transcript || "").split(/\s+/).filter(Boolean).length,
+      transcript: safeTranscript,
+      wordCount: safeTranscript.split(/\s+/).filter(Boolean).length,
       duration: duration || 0,
       evaluation,
     };
@@ -269,7 +280,7 @@ router.post("/evaluate-answer", async (req, res) => {
 // ═══════════════════════════════════════════════════════════
 // POST /anti-cheat - Log anti-cheating violations
 // ═══════════════════════════════════════════════════════════
-router.post("/anti-cheat", async (req, res) => {
+router.post("/anti-cheat", authMiddleware, async (req, res) => {
   try {
     const { sessionId, type } = req.body;
 

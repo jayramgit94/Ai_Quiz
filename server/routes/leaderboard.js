@@ -3,8 +3,14 @@ const LeaderboardEntry = require("../models/LeaderboardEntry");
 const DailyChallenge = require("../models/DailyChallenge");
 const { generateQuizQuestions } = require("../services/grokService");
 const { validateQuestionSet } = require("../utils/validation");
+const { authMiddleware } = require("./auth");
 
 const router = express.Router();
+
+// Escape special regex characters to prevent NoSQL injection
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 // ─── DAILY TOPICS POOL ───
 const DAILY_TOPICS = [
@@ -26,8 +32,8 @@ const DAILY_TOPICS = [
 ];
 
 // ─── POST /api/leaderboard/add ───
-// Add entry to leaderboard
-router.post("/add", async (req, res) => {
+// Add entry to leaderboard (authenticated)
+router.post("/add", authMiddleware, async (req, res) => {
   try {
     const {
       userName,
@@ -41,7 +47,9 @@ router.post("/add", async (req, res) => {
     } = req.body;
 
     if (!userName || score === undefined || !topic) {
-      return res.status(400).json({ error: "userName, score, and topic are required" });
+      return res
+        .status(400)
+        .json({ error: "userName, score, and topic are required" });
     }
 
     const entry = await LeaderboardEntry.create({
@@ -103,7 +111,7 @@ router.get("/all", async (req, res) => {
 router.get("/topic/:topic", async (req, res) => {
   try {
     const entries = await LeaderboardEntry.find({
-      topic: { $regex: new RegExp(req.params.topic, "i") },
+      topic: { $regex: new RegExp(escapeRegex(req.params.topic), "i") },
     })
       .sort({ finalScore: -1 })
       .limit(50)
@@ -123,7 +131,7 @@ router.get("/progress/:userName", async (req, res) => {
     const userName = req.params.userName;
 
     const entries = await LeaderboardEntry.find({
-      userName: { $regex: new RegExp(`^${userName}$`, "i") },
+      userName: { $regex: new RegExp(`^${escapeRegex(userName)}$`, "i") },
     })
       .sort({ date: -1 })
       .lean();
@@ -143,7 +151,7 @@ router.get("/progress/:userName", async (req, res) => {
     const totalQuizzes = entries.length;
     const totalCorrect = entries.reduce((sum, e) => sum + (e.score || 0), 0);
     const averageAccuracy = Math.round(
-      entries.reduce((sum, e) => sum + (e.accuracy || 0), 0) / totalQuizzes
+      entries.reduce((sum, e) => sum + (e.accuracy || 0), 0) / totalQuizzes,
     );
 
     // Topic breakdown with heatmap data
@@ -166,7 +174,7 @@ router.get("/progress/:userName", async (req, res) => {
     });
 
     const topicHistory = Object.values(topicMap).sort(
-      (a, b) => b.quizCount - a.quizCount
+      (a, b) => b.quizCount - a.quizCount,
     );
 
     res.json({
@@ -212,7 +220,7 @@ router.get("/daily-challenge", async (req, res) => {
     // Generate new daily challenge
     // Pick a random topic based on day of year for consistency
     const dayOfYear = Math.floor(
-      (Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000
+      (Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000,
     );
     const topicIndex = dayOfYear % DAILY_TOPICS.length;
     const topic = DAILY_TOPICS[topicIndex];
@@ -223,7 +231,9 @@ router.get("/daily-challenge", async (req, res) => {
     const { validQuestions } = validateQuestionSet(rawQuestions);
 
     if (validQuestions.length === 0) {
-      return res.status(500).json({ error: "Failed to generate daily challenge" });
+      return res
+        .status(500)
+        .json({ error: "Failed to generate daily challenge" });
     }
 
     // Save to DB

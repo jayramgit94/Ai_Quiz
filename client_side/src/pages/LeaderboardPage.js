@@ -1,3 +1,4 @@
+import { Medal, Trophy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAllLeaderboard, getTodayLeaderboard } from "../services/api";
@@ -29,9 +30,12 @@ export default function LeaderboardPage() {
   };
 
   const getRankBadge = (rank) => {
-    if (rank === 1) return "🥇";
-    if (rank === 2) return "🥈";
-    if (rank === 3) return "🥉";
+    if (rank === 1)
+      return <span style={{ color: "#FFD700", fontWeight: 700 }}>1st</span>;
+    if (rank === 2)
+      return <span style={{ color: "#C0C0C0", fontWeight: 700 }}>2nd</span>;
+    if (rank === 3)
+      return <span style={{ color: "#CD7F32", fontWeight: 700 }}>3rd</span>;
     return `#${rank}`;
   };
 
@@ -46,7 +50,9 @@ export default function LeaderboardPage() {
         </button>
 
         <div className="lb-header animate-fade-in-up">
-          <span className="lb-icon">🏆</span>
+          <span className="lb-icon">
+            <Trophy size={36} />
+          </span>
           <h1>Leaderboard</h1>
           <p>See how you rank against other learners</p>
         </div>
@@ -77,7 +83,9 @@ export default function LeaderboardPage() {
             className="card empty-state animate-fade-in-up"
             style={{ textAlign: "center", padding: 48 }}
           >
-            <div style={{ fontSize: "3rem", marginBottom: 12 }}>🏅</div>
+            <div style={{ marginBottom: 12, color: "var(--text-muted)" }}>
+              <Medal size={40} />
+            </div>
             <h3>No Entries Yet</h3>
             <p>Be the first to top the leaderboard!</p>
             <button

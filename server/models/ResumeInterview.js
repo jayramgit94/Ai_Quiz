@@ -3,7 +3,10 @@ const mongoose = require("mongoose");
 const questionResponseSchema = new mongoose.Schema({
   questionIndex: Number,
   question: String,
-  category: { type: String, enum: ["technical", "behavioral", "project", "hr"] },
+  category: {
+    type: String,
+    enum: ["technical", "behavioral", "project", "hr"],
+  },
   expectedTopics: [String],
   transcript: { type: String, default: "" },
   wordCount: { type: Number, default: 0 },
@@ -78,7 +81,10 @@ const resumeInterviewSchema = new mongoose.Schema(
     questions: [
       {
         question: String,
-        category: { type: String, enum: ["technical", "behavioral", "project", "hr"] },
+        category: {
+          type: String,
+          enum: ["technical", "behavioral", "project", "hr"],
+        },
         expectedTopics: [String],
         difficulty: String,
         context: String, // which resume section inspired this
@@ -124,9 +130,17 @@ const resumeInterviewSchema = new mongoose.Schema(
     startedAt: Date,
     completedAt: Date,
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 resumeInterviewSchema.index({ userName: 1, createdAt: -1 });
+// Auto-delete incomplete sessions after 7 days
+resumeInterviewSchema.index(
+  { createdAt: 1 },
+  {
+    expireAfterSeconds: 7 * 24 * 60 * 60,
+    partialFilterExpression: { status: { $ne: "completed" } },
+  },
+);
 
 module.exports = mongoose.model("ResumeInterview", resumeInterviewSchema);

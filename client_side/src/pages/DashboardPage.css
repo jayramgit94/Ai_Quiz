@@ -1,4 +1,4 @@
-/* ═══ DASHBOARD ═══ */
+/* ═══ DASHBOARD — Premium ═══ */
 
 .dashboard-page {
   min-height: 100vh;
@@ -11,9 +11,16 @@
 }
 
 .dash-icon {
-  font-size: 3rem;
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   margin-bottom: 12px;
+  color: var(--primary);
 }
 
 .dash-header p {
@@ -28,11 +35,40 @@
   margin: 0 auto 36px;
 }
 
+.dash-search .input {
+  flex: 1;
+}
+
 /* User XP Card */
 .user-xp-card {
   padding: 24px;
   margin-bottom: 24px;
-  background: linear-gradient(135deg, var(--bg-card), var(--bg-elevated));
+  background: linear-gradient(
+    135deg,
+    var(--bg-glass),
+    rgba(124, 106, 255, 0.03)
+  );
+  backdrop-filter: blur(var(--blur-md));
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+}
+
+.user-xp-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(124, 106, 255, 0.15),
+    transparent
+  );
+  pointer-events: none;
 }
 
 .user-xp-top {
@@ -45,13 +81,8 @@
 .user-xp-info h3 {
   margin-bottom: 4px;
 }
-
 .user-xp-info p {
   font-size: 0.85rem;
-}
-
-.dash-search .input {
-  flex: 1;
 }
 
 /* Stats Grid */
@@ -65,12 +96,22 @@
 .stat-card {
   text-align: center;
   padding: 24px 16px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur-sm));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: all var(--transition-base);
+}
+
+.stat-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
 }
 
 .stat-card-icon {
   font-size: 1.5rem;
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .stat-card-value {
@@ -79,18 +120,23 @@
   font-weight: 800;
   color: var(--primary-light);
   margin-bottom: 4px;
+  letter-spacing: -0.02em;
 }
 
 .stat-card-label {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.06em;
 }
 
 /* Heatmap */
 .heatmap-card {
   padding: 32px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur-sm));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 .heatmap-card h3 {
@@ -117,20 +163,21 @@
 
 .heatmap-name {
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   display: block;
 }
 
 .heatmap-meta {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
 }
 
 .heatmap-track {
   height: 24px;
-  background: var(--bg);
-  border-radius: 4px;
+  background: var(--bg-card);
+  border-radius: var(--radius-xs);
   overflow: hidden;
+  border: 1px solid var(--border);
 }
 
 .heatmap-diff {

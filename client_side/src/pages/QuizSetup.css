@@ -1,4 +1,4 @@
-/* ═══ QUIZ SETUP ═══ */
+/* ═══ QUIZ SETUP — Premium ═══ */
 
 .setup-page {
   min-height: 100vh;
@@ -7,12 +7,11 @@
   flex-direction: column;
 }
 
-.back-btn {
-  margin-bottom: 20px;
-}
-
 .setup-card {
   padding: 40px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur-md));
+  border: 1px solid var(--border-glass);
 }
 
 .setup-header {
@@ -21,20 +20,28 @@
 }
 
 .setup-icon {
-  font-size: 2.5rem;
-  display: block;
-  margin-bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  color: var(--primary);
 }
 
 .setup-header h2 {
   margin-bottom: 8px;
+  letter-spacing: -0.02em;
 }
 
 .setup-header p {
   color: var(--text-muted);
 }
 
-/* Topic input row */
+/* Topic */
 .topic-input-row {
   display: flex;
   gap: 10px;
@@ -53,18 +60,19 @@
 .subtopics-list {
   margin-bottom: 20px;
   padding: 16px;
-  background: var(--bg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
 
 .subtopics-list label {
   display: block;
   margin-bottom: 10px;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.06em;
 }
 
 .subtopic-tags {
@@ -74,11 +82,12 @@
 }
 
 .subtopic-tag {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   padding: 6px 14px;
+  transition: all var(--transition-fast);
 }
 
-/* Difficulty selector */
+/* Difficulty */
 .difficulty-selector {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -90,44 +99,46 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 16px 12px;
-  background: var(--bg);
+  padding: 18px 12px;
+  background: var(--bg-card);
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-base);
   color: var(--text);
   font-family: inherit;
 }
 
 .difficulty-btn:hover {
   border-color: var(--border-hover);
+  background: var(--bg-card-hover);
 }
 
 .difficulty-btn.active.easy {
   border-color: var(--success);
-  background: rgba(88, 204, 2, 0.08);
+  background: var(--success-glow);
+  box-shadow: 0 0 20px rgba(52, 211, 153, 0.1);
 }
 
 .difficulty-btn.active.medium {
   border-color: var(--warning);
-  background: rgba(255, 176, 32, 0.08);
+  background: var(--warning-glow);
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.1);
 }
 
 .difficulty-btn.active.hard {
   border-color: var(--error);
-  background: rgba(255, 75, 75, 0.08);
+  background: var(--error-glow);
+  box-shadow: 0 0 20px rgba(248, 113, 113, 0.1);
 }
 
 .diff-emoji {
   font-size: 1.5rem;
 }
-
 .diff-label {
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
-
 .diff-desc {
   font-size: 0.7rem;
   color: var(--text-muted);
@@ -142,7 +153,7 @@
 .num-btn {
   flex: 1;
   padding: 14px;
-  background: var(--bg);
+  background: var(--bg-card);
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -150,20 +161,21 @@
   font-size: 1.1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-base);
 }
 
 .num-btn:hover {
   border-color: var(--border-hover);
+  background: var(--bg-card-hover);
 }
 
 .num-btn.active {
   border-color: var(--primary);
   background: var(--primary-glow);
   color: var(--primary-light);
+  box-shadow: 0 0 20px rgba(124, 106, 255, 0.12);
 }
 
-/* Start button */
 .start-btn {
   margin-top: 12px;
 }

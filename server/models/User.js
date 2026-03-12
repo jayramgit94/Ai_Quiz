@@ -87,14 +87,15 @@ userSchema.methods.addXP = function (amount, source) {
   // Check streak
   const today = new Date().toISOString().split("T")[0];
   if (this.lastActiveDate) {
-    const lastDate = new Date(this.lastActiveDate);
-    const todayDate = new Date(today);
-    const diffDays = Math.round((todayDate - lastDate) / (1000 * 60 * 60 * 24));
+    const lastDate = new Date(this.lastActiveDate + "T00:00:00Z");
+    const todayDate = new Date(today + "T00:00:00Z");
+    const diffDays = Math.floor((todayDate - lastDate) / (1000 * 60 * 60 * 24));
     if (diffDays === 1) {
       this.streak += 1;
     } else if (diffDays > 1) {
       this.streak = 1;
     }
+    // diffDays === 0 means same day, don't change streak
   } else {
     this.streak = 1;
   }
@@ -113,7 +114,7 @@ userSchema.methods.addXP = function (amount, source) {
     {
       id: "quiz_5",
       name: "Getting Started",
-      icon: "🔥",
+      icon: "�",
       description: "Complete 5 quizzes",
       check: () => this.totalQuizzes >= 5,
     },

@@ -4,8 +4,41 @@ const User = require("../models/User");
 
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || "ai_quiz_secret_key_2024";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV === "production") {
+  console.error(
+    "FATAL: JWT_SECRET environment variable is required in production",
+  );
+  process.exit(1);
+}
+const SAFE_JWT_SECRET = JWT_SECRET || "dev_only_secret_change_in_production";
 const JWT_EXPIRES = "7d";
+
+// Email validation regex
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Standard user fields returned in auth responses
+function sanitizeUser(user) {
+  return {
+    id: user._id,
+    email: user.email,
+    displayName: user.displayName,
+    avatar: user.avatar,
+    country: user.country,
+    xp: user.xp,
+    level: user.level,
+    streak: user.streak,
+    achievements: user.achievements,
+    theme: user.theme,
+    totalQuizzes: user.totalQuizzes,
+    totalCorrect: user.totalCorrect,
+    totalQuestions: user.totalQuestions,
+    totalInterviews: user.totalInterviews,
+    bestAccuracy: user.bestAccuracy,
+    topicStats: user.topicStats,
+    accuracyHistory: user.accuracyHistory,
+  };
+}
 
 // Middleware to verify JWT
 function authMiddleware(req, res, next) {
@@ -14,7 +47,7 @@ function authMiddleware(req, res, next) {
     return res.status(401).json({ error: "Authentication required" });
   }
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, SAFE_JWT_SECRET);
     req.userId = decoded.userId;
     next();
   } catch {
@@ -31,6 +64,10 @@ router.post("/register", async (req, res) => {
       return res
         .status(400)
         .json({ error: "Email, password, and name are required" });
+    }
+
+    if (!EMAIL_REGEX.test(email)) {
+      return res.status(400).json({ error: "Invalid email format" });
     }
 
     if (password.length < 6) {
@@ -51,28 +88,11 @@ router.post("/register", async (req, res) => {
       country: country || "",
     });
 
-    const token = jwt.sign({ userId: user._id }, JWT_SECRET, {
+    const token = jwt.sign({ userId: user._id }, SAFE_JWT_SECRET, {
       expiresIn: JWT_EXPIRES,
     });
 
-    res.status(201).json({
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        displayName: user.displayName,
-        avatar: user.avatar,
-        country: user.country,
-        xp: user.xp,
-        level: user.level,
-        streak: user.streak,
-        achievements: user.achievements,
-        theme: user.theme,
-        totalQuizzes: user.totalQuizzes,
-        totalInterviews: user.totalInterviews,
-        bestAccuracy: user.bestAccuracy,
-      },
-    });
+    res.status(201).json({ token, user: sanitizeUser(user) });
   } catch (err) {
     console.error("Register error:", err.message);
     res.status(500).json({ error: "Registration failed" });
@@ -98,31 +118,11 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    const token = jwt.sign({ userId: user._id }, JWT_SECRET, {
+    const token = jwt.sign({ userId: user._id }, SAFE_JWT_SECRET, {
       expiresIn: JWT_EXPIRES,
     });
 
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        displayName: user.displayName,
-        avatar: user.avatar,
-        country: user.country,
-        xp: user.xp,
-        level: user.level,
-        streak: user.streak,
-        achievements: user.achievements,
-        theme: user.theme,
-        totalQuizzes: user.totalQuizzes,
-        totalCorrect: user.totalCorrect,
-        totalInterviews: user.totalInterviews,
-        bestAccuracy: user.bestAccuracy,
-        topicStats: user.topicStats,
-        accuracyHistory: user.accuracyHistory,
-      },
-    });
+    res.json({ token, user: sanitizeUser(user) });
   } catch (err) {
     console.error("Login error:", err.message);
     res.status(500).json({ error: "Login failed" });
@@ -171,13 +171,22 @@ router.put("/profile", authMiddleware, async (req, res) => {
 router.post("/record-quiz", authMiddleware, async (req, res) => {
   try {
     const { topic, accuracy, score, totalQuestions, difficulty } = req.body;
-    const user = await User.findById(req.userId);
+
+    // Atomic increment for core stats
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      {
+        $inc: {
+          totalQuizzes: 1,
+          totalCorrect: score || 0,
+          totalQuestions: totalQuestions || 0,
+        },
+      },
+      { new: true },
+    );
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Update stats
-    user.totalQuizzes += 1;
-    user.totalCorrect += score || 0;
-    user.totalQuestions += totalQuestions || 0;
+    // Update bestAccuracy if improved
     if (accuracy > user.bestAccuracy) user.bestAccuracy = accuracy;
 
     // Update topic stats
@@ -251,10 +260,12 @@ router.post("/record-quiz", authMiddleware, async (req, res) => {
 router.post("/record-interview", authMiddleware, async (req, res) => {
   try {
     const { overallScore } = req.body;
-    const user = await User.findById(req.userId);
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { $inc: { totalInterviews: 1 } },
+      { new: true },
+    );
     if (!user) return res.status(404).json({ error: "User not found" });
-
-    user.totalInterviews += 1;
     let xpEarned = 25;
     if (overallScore >= 80) xpEarned += 25;
     else if (overallScore >= 60) xpEarned += 15;
@@ -281,7 +292,7 @@ router.post("/record-interview", authMiddleware, async (req, res) => {
 
 // ─── GET /api/auth/leaderboard ───
 // User-based leaderboard with XP
-router.get("/leaderboard", async (req, res) => {
+router.get("/leaderboard", authMiddleware, async (req, res) => {
   try {
     const users = await User.find({ totalQuizzes: { $gt: 0 } })
       .select(
@@ -298,11 +309,23 @@ router.get("/leaderboard", async (req, res) => {
 });
 
 // ─── DELETE /api/auth/clear-data ───
-// Clear all user data (stats) but keep account
+// Clear all user data (stats) but keep account — requires password
 router.delete("/clear-data", authMiddleware, async (req, res) => {
   try {
+    const { password } = req.body;
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Verify password before destructive action
+    if (!password) {
+      return res
+        .status(400)
+        .json({ error: "Password is required to clear data" });
+    }
+    const isValid = await user.comparePassword(password);
+    if (!isValid) {
+      return res.status(401).json({ error: "Incorrect password" });
+    }
 
     user.xp = 0;
     user.level = 1;

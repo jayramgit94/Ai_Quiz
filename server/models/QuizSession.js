@@ -7,14 +7,22 @@ const questionSchema = new mongoose.Schema({
   explanation: { type: String, default: "" },
   example: { type: String, default: "" },
   interviewTip: { type: String, default: "" },
-  difficulty: { type: String, enum: ["easy", "medium", "hard"], default: "medium" },
+  difficulty: {
+    type: String,
+    enum: ["easy", "medium", "hard"],
+    default: "medium",
+  },
   topic: { type: String, default: "" },
 });
 
 const answerSchema = new mongoose.Schema({
   questionIndex: { type: Number, required: true },
   selectedAnswer: { type: String, required: true },
-  confidence: { type: String, enum: ["high", "medium", "guess"], default: "medium" },
+  confidence: {
+    type: String,
+    enum: ["high", "medium", "guess"],
+    default: "medium",
+  },
   timeTaken: { type: Number, default: 0 },
   isCorrect: { type: Boolean, default: false },
 });
@@ -24,7 +32,11 @@ const quizSessionSchema = new mongoose.Schema(
     sessionId: { type: String, required: true, unique: true, index: true },
     userName: { type: String, default: "Anonymous" },
     topic: { type: String, required: true },
-    difficulty: { type: String, enum: ["easy", "medium", "hard"], default: "medium" },
+    difficulty: {
+      type: String,
+      enum: ["easy", "medium", "hard"],
+      default: "medium",
+    },
     questions: [questionSchema],
     answers: [answerSchema],
     score: { type: Number, default: 0 },
@@ -42,7 +54,10 @@ const quizSessionSchema = new mongoose.Schema(
     },
     completed: { type: Boolean, default: false },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
+
+quizSessionSchema.index({ userName: 1, createdAt: -1 });
+quizSessionSchema.index({ topic: 1 });
 
 module.exports = mongoose.model("QuizSession", quizSessionSchema);

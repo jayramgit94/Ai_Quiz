@@ -1,7 +1,10 @@
 const express = require("express");
 const crypto = require("crypto");
 const QuizSession = require("../models/QuizSession");
-const { generateQuizQuestions, expandTopic } = require("../services/grokService");
+const {
+  generateQuizQuestions,
+  expandTopic,
+} = require("../services/grokService");
 const { calculateScores } = require("../utils/scoring");
 const { validateQuestionSet } = require("../utils/validation");
 
@@ -11,7 +14,12 @@ const router = express.Router();
 // Generate a new quiz using Grok AI
 router.post("/generate", async (req, res) => {
   try {
-    const { topic, difficulty = "medium", count = 5, userName = "Anonymous" } = req.body;
+    const {
+      topic,
+      difficulty = "medium",
+      count = 5,
+      userName = "Anonymous",
+    } = req.body;
 
     if (!topic || !topic.trim()) {
       return res.status(400).json({ error: "Topic is required" });
@@ -32,7 +40,7 @@ router.post("/generate", async (req, res) => {
       topic.trim(),
       difficulty,
       numQuestions,
-      subtopics
+      subtopics,
     );
 
     // Anti-Hallucination Validation Layer
@@ -84,7 +92,9 @@ router.post("/submit", async (req, res) => {
     const { sessionId, answers } = req.body;
 
     if (!sessionId || !answers) {
-      return res.status(400).json({ error: "sessionId and answers are required" });
+      return res
+        .status(400)
+        .json({ error: "sessionId and answers are required" });
     }
 
     // Get session from DB
@@ -97,6 +107,11 @@ router.post("/submit", async (req, res) => {
 
     if (!session) {
       return res.status(404).json({ error: "Quiz session not found" });
+    }
+
+    // Prevent duplicate submissions
+    if (session.completed) {
+      return res.status(409).json({ error: "Quiz already submitted" });
     }
 
     // Calculate all scores
@@ -130,7 +145,9 @@ router.post("/submit", async (req, res) => {
 // Get existing quiz session
 router.get("/session/:sessionId", async (req, res) => {
   try {
-    const session = await QuizSession.findOne({ sessionId: req.params.sessionId });
+    const session = await QuizSession.findOne({
+      sessionId: req.params.sessionId,
+    });
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }

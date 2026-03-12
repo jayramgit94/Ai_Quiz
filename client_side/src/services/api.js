@@ -17,10 +17,12 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+let isRedirecting = false;
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    if (err.response?.status === 401 && !isRedirecting) {
+      isRedirecting = true;
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       if (
@@ -29,6 +31,10 @@ api.interceptors.response.use(
       ) {
         window.location.href = "/login";
       }
+      // Reset flag after redirect completes
+      setTimeout(() => {
+        isRedirecting = false;
+      }, 2000);
     }
     return Promise.reject(err);
   },

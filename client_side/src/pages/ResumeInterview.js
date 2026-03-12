@@ -1,3 +1,20 @@
+import {
+  AlertTriangle,
+  BarChart2,
+  Brain,
+  Briefcase,
+  Camera,
+  ClipboardList,
+  Code,
+  FileText,
+  Layers,
+  MessageCircle,
+  Mic,
+  Paperclip,
+  Target,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -69,6 +86,7 @@ export default function ResumeInterview() {
   const recognitionRef = useRef(null);
   const timerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const isRecordingRef = useRef(false); // kept in sync with isRecording state to avoid stale closures
 
   // ═══════════════════════════════════════════════════
   // CLEANUP
@@ -165,6 +183,17 @@ export default function ResumeInterview() {
   }, [phase, isRecording, timePerQuestion]);
 
   // ═══════════════════════════════════════════════════
+  // CAMERA: assign srcObject after video element mounts
+  // (startCamera runs during PREPARING phase before the
+  //  <video> element exists, so we set it here reactively)
+  // ═══════════════════════════════════════════════════
+  useEffect(() => {
+    if (cameraStream && videoRef.current) {
+      videoRef.current.srcObject = cameraStream;
+    }
+  }, [cameraStream, phase]);
+
+  // ═══════════════════════════════════════════════════
   // CAMERA SETUP
   // ═══════════════════════════════════════════════════
   const startCamera = useCallback(async () => {
@@ -228,8 +257,8 @@ export default function ResumeInterview() {
     };
 
     recognition.onend = () => {
-      // Auto-restart if still recording
-      if (recognitionRef.current && isRecording) {
+      // Auto-restart if still recording — use ref to avoid stale closure
+      if (recognitionRef.current && isRecordingRef.current) {
         try {
           recognitionRef.current.start();
         } catch {
@@ -241,7 +270,7 @@ export default function ResumeInterview() {
     recognitionRef.current = recognition;
     recognition.start();
     return true;
-  }, [isRecording]);
+  }, []);
 
   // ═══════════════════════════════════════════════════
   // FILE HANDLING
@@ -364,6 +393,7 @@ export default function ResumeInterview() {
     setTranscript("");
     setInterimTranscript("");
     setTimer(0);
+    isRecordingRef.current = true;
     setIsRecording(true);
     startSpeechRecognition();
   };
@@ -372,6 +402,7 @@ export default function ResumeInterview() {
   // STOP ANSWERING & EVALUATE
   // ═══════════════════════════════════════════════════
   const handleStopAnswer = async () => {
+    isRecordingRef.current = false;
     setIsRecording(false);
     if (recognitionRef.current) {
       recognitionRef.current.stop();
@@ -456,6 +487,7 @@ export default function ResumeInterview() {
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
+    isRecordingRef.current = false;
     setIsRecording(false);
 
     setResponses((prev) => [
@@ -546,15 +578,60 @@ export default function ResumeInterview() {
   const getCategoryIcon = (cat) => {
     switch (cat) {
       case "technical":
-        return "💻";
+        return (
+          <Code
+            size={13}
+            style={{
+              display: "inline",
+              verticalAlign: "middle",
+              marginRight: 4,
+            }}
+          />
+        );
       case "project":
-        return "🏗️";
+        return (
+          <Layers
+            size={13}
+            style={{
+              display: "inline",
+              verticalAlign: "middle",
+              marginRight: 4,
+            }}
+          />
+        );
       case "behavioral":
-        return "🤝";
+        return (
+          <Users
+            size={13}
+            style={{
+              display: "inline",
+              verticalAlign: "middle",
+              marginRight: 4,
+            }}
+          />
+        );
       case "hr":
-        return "💼";
+        return (
+          <Briefcase
+            size={13}
+            style={{
+              display: "inline",
+              verticalAlign: "middle",
+              marginRight: 4,
+            }}
+          />
+        );
       default:
-        return "📋";
+        return (
+          <ClipboardList
+            size={13}
+            style={{
+              display: "inline",
+              verticalAlign: "middle",
+              marginRight: 4,
+            }}
+          />
+        );
     }
   };
 
@@ -574,7 +651,17 @@ export default function ResumeInterview() {
         <button className="btn btn-ghost btn-sm" onClick={() => navigate("/")}>
           ← Back
         </button>
-        <h1>🎤 AI Resume Interview</h1>
+        <h1>
+          <Mic
+            size={22}
+            style={{
+              display: "inline",
+              verticalAlign: "middle",
+              marginRight: 8,
+            }}
+          />
+          AI Resume Interview
+        </h1>
         <p className="ri-subtitle">
           Upload your resume and face AI-generated interview questions with live
           camera, speech-to-text, and real-time evaluation.
@@ -682,7 +769,7 @@ export default function ResumeInterview() {
             {file ? (
               <div className="ri-file-info">
                 <span className="ri-file-icon">
-                  {file.name.endsWith(".pdf") ? "📄" : "📝"}
+                  <FileText size={20} />
                 </span>
                 <span className="ri-file-name">{file.name}</span>
                 <span className="ri-file-size">
@@ -700,7 +787,9 @@ export default function ResumeInterview() {
               </div>
             ) : (
               <div className="ri-drop-content">
-                <span className="ri-drop-icon">📎</span>
+                <span className="ri-drop-icon">
+                  <Paperclip size={28} />
+                </span>
                 <p>Drag & drop your resume here</p>
                 <span className="ri-drop-hint">
                   or click to browse · PDF, DOCX · Max 10MB
@@ -711,19 +800,19 @@ export default function ResumeInterview() {
 
           <div className="ri-features-list">
             <div className="ri-feature-item">
-              <span>🧠</span> AI parses skills, projects & experience
+              <Brain size={14} /> AI parses skills, projects & experience
             </div>
             <div className="ri-feature-item">
-              <span>🎯</span> Questions tailored to YOUR resume
+              <Target size={14} /> Questions tailored to YOUR resume
             </div>
             <div className="ri-feature-item">
-              <span>🎤</span> Live speech-to-text transcription
+              <Mic size={14} /> Live speech-to-text transcription
             </div>
             <div className="ri-feature-item">
-              <span>📹</span> Camera monitoring (anti-cheat)
+              <Camera size={14} /> Camera monitoring (anti-cheat)
             </div>
             <div className="ri-feature-item">
-              <span>📊</span> AI-powered answer evaluation
+              <BarChart2 size={14} /> AI-powered answer evaluation
             </div>
           </div>
         </div>
@@ -760,7 +849,17 @@ export default function ResumeInterview() {
         >
           ← Back
         </button>
-        <h1>📋 Resume Parsed Successfully</h1>
+        <h1>
+          <ClipboardList
+            size={22}
+            style={{
+              display: "inline",
+              verticalAlign: "middle",
+              marginRight: 8,
+            }}
+          />
+          Resume Parsed Successfully
+        </h1>
         <p className="ri-subtitle">
           AI has analyzed your resume. Review the extracted data below.
         </p>
@@ -769,14 +868,34 @@ export default function ResumeInterview() {
       <div className="ri-preview-grid">
         {/* Candidate Info */}
         <div className="ri-preview-card card">
-          <h3>👤 Candidate</h3>
+          <h3>
+            <Target
+              size={15}
+              style={{
+                display: "inline",
+                verticalAlign: "middle",
+                marginRight: 6,
+              }}
+            />
+            Candidate
+          </h3>
           <div className="ri-preview-name">{resumeData?.name || userName}</div>
           <p className="ri-preview-summary">{resumeData?.summary}</p>
         </div>
 
         {/* Skills */}
         <div className="ri-preview-card card">
-          <h3>🛠️ Skills & Technologies</h3>
+          <h3>
+            <Code
+              size={15}
+              style={{
+                display: "inline",
+                verticalAlign: "middle",
+                marginRight: 6,
+              }}
+            />
+            Skills & Technologies
+          </h3>
           <div className="ri-tags">
             {[
               ...(resumeData?.skills || []),
@@ -793,13 +912,33 @@ export default function ResumeInterview() {
 
         {/* Projects */}
         <div className="ri-preview-card card">
-          <h3>🏗️ Projects ({resumeData?.projectCount || 0})</h3>
+          <h3>
+            <Layers
+              size={15}
+              style={{
+                display: "inline",
+                verticalAlign: "middle",
+                marginRight: 6,
+              }}
+            />
+            Projects ({resumeData?.projectCount || 0})
+          </h3>
           <p>Projects found and will be used to generate questions.</p>
         </div>
 
         {/* Experience */}
         <div className="ri-preview-card card">
-          <h3>💼 Experience ({resumeData?.experienceCount || 0})</h3>
+          <h3>
+            <Briefcase
+              size={15}
+              style={{
+                display: "inline",
+                verticalAlign: "middle",
+                marginRight: 6,
+              }}
+            />
+            Experience ({resumeData?.experienceCount || 0})
+          </h3>
           <p>Work experiences found and will be referenced in questions.</p>
         </div>
       </div>
@@ -875,7 +1014,9 @@ export default function ResumeInterview() {
         {showWarning && (
           <div className="ri-warning-overlay animate-fade-in">
             <div className="ri-warning-box">
-              <span className="ri-warning-icon">⚠️</span>
+              <span className="ri-warning-icon">
+                <AlertTriangle size={32} />
+              </span>
               <h3>Warning Detected!</h3>
               <p>Tab switches and fullscreen exits are being recorded.</p>
               <p className="ri-warning-count">
@@ -1119,7 +1260,9 @@ export default function ResumeInterview() {
         {/* Score Breakdown */}
         <div className="ri-scores-grid">
           <div className="ri-score-card card">
-            <span className="ri-score-icon">💻</span>
+            <span className="ri-score-icon">
+              <Code size={22} />
+            </span>
             <div
               className="ri-score-value"
               style={{ color: getScoreColor(r.technicalScore) }}
@@ -1138,7 +1281,9 @@ export default function ResumeInterview() {
             </div>
           </div>
           <div className="ri-score-card card">
-            <span className="ri-score-icon">🗣️</span>
+            <span className="ri-score-icon">
+              <MessageCircle size={22} />
+            </span>
             <div
               className="ri-score-value"
               style={{ color: getScoreColor(r.communicationScore) }}
@@ -1157,7 +1302,9 @@ export default function ResumeInterview() {
             </div>
           </div>
           <div className="ri-score-card card">
-            <span className="ri-score-icon">💪</span>
+            <span className="ri-score-icon">
+              <TrendingUp size={22} />
+            </span>
             <div
               className="ri-score-value"
               style={{ color: getScoreColor(r.confidenceScore) }}

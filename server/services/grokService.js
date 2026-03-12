@@ -55,7 +55,11 @@ async function callGrok(messages, maxTokens = 4096) {
     },
   );
 
-  return response.data.choices[0].message.content;
+  const content = response.data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("AI returned empty response");
+  }
+  return content;
 }
 
 /**
@@ -123,7 +127,7 @@ Return this EXACT JSON format:
  */
 function parseQuizJSON(raw, expectedCount) {
   // Strip markdown code blocks if present
-  let cleaned = raw.trim();
+  let cleaned = sanitizeJsonString(raw.trim());
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   }
@@ -293,19 +297,46 @@ async function evaluateInterviewAnswer(
   question,
   userAnswer,
   questionNumber,
+  options,
+  correctAnswer,
 ) {
-  const prompt = `You are a technical interviewer evaluating an answer.
+  // Deterministic evaluation — compare letters directly instead of asking AI to guess
+  let evaluation = "incorrect";
+  if (correctAnswer && userAnswer) {
+    evaluation =
+      userAnswer.toUpperCase().charAt(0) ===
+      correctAnswer.toUpperCase().charAt(0)
+        ? "correct"
+        : "incorrect";
+  }
+
+  // Build context-rich prompt for feedback only (not for determining correct/incorrect)
+  const optionsBlock = options && options.length ? options.join("\n") : "";
+  const correctText = options
+    ? (options.find((o) =>
+        o.toUpperCase().startsWith(correctAnswer?.toUpperCase()?.charAt(0)),
+      ) ?? correctAnswer)
+    : (correctAnswer ?? userAnswer);
+  const userText = options
+    ? (options.find((o) =>
+        o.toUpperCase().startsWith(userAnswer?.toUpperCase()?.charAt(0)),
+      ) ?? userAnswer)
+    : userAnswer;
+
+  const prompt = `You are a technical interviewer providing educational feedback.
 
 Topic: ${topic}
 Question: ${question}
-User's answer: ${userAnswer}
+${optionsBlock ? `Options:\n${optionsBlock}\n` : ""}Correct Answer: ${correctText}
+User Selected: ${userText}
+Result: ${evaluation.toUpperCase()}
 
-Evaluate the answer and generate a follow-up question.
+Write 2-3 sentences explaining why the correct answer is right and what the user should learn.
+Then generate a follow-up question on the same topic.
 
 Return ONLY valid JSON:
 {
-  "evaluation": "correct" or "partially_correct" or "incorrect",
-  "feedback": "Detailed feedback on the answer",
+  "feedback": "Educational feedback explaining the correct answer",
   "followUpQuestion": {
     "question": "Follow-up question text",
     "options": ["A) option", "B) option", "C) option", "D) option"],
@@ -349,7 +380,7 @@ Return ONLY valid JSON:
   }
 
   return {
-    evaluation: parsed.evaluation || "incorrect",
+    evaluation, // determined deterministically above, not from AI
     feedback: parsed.feedback || "No feedback available.",
     followUpQuestion: parsed.followUpQuestion || null,
     questionNumber: parsed.questionNumber || questionNumber + 1,
