@@ -22,6 +22,7 @@ const isDev = process.env.NODE_ENV !== "production";
 
 // Build allowed origins: localhost:* in dev + explicit CLIENT_URL(s) in prod
 // CLIENT_URL supports comma-separated list: CLIENT_URL=https://a.vercel.app,https://b.vercel.app
+// VERCEL_URL is auto-injected by Vercel on every deployment (no https:// prefix)
 const allowedOrigins = [
   ...(isDev
     ? [
@@ -33,6 +34,7 @@ const allowedOrigins = [
   ...(process.env.CLIENT_URL
     ? process.env.CLIENT_URL.split(",").map((u) => u.trim())
     : []),
+  ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
 ].filter(Boolean);
 
 app.use(
@@ -47,7 +49,8 @@ app.use(
         return callback(null, true);
       }
       if (
-        allowedOrigins.some((o) => o.replace(/\/$/, "") === normalizedOrigin)
+        allowedOrigins.some((o) => o.replace(/\/$/, "") === normalizedOrigin) ||
+        /^https:\/\/ai-quiz[\w-]*\.vercel\.app$/.test(normalizedOrigin)
       ) {
         return callback(null, true);
       }
