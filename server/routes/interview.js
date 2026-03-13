@@ -7,6 +7,13 @@ const {
 
 const router = express.Router();
 
+function getMinWordsForDifficulty(difficulty = "medium") {
+  const level = String(difficulty || "medium").toLowerCase();
+  if (level === "easy") return 1;
+  if (level === "hard") return 4;
+  return 2;
+}
+
 // ─── POST /api/interview/start ───
 // Start a new live interview session
 router.post("/start", async (req, res) => {
@@ -49,27 +56,35 @@ router.post("/answer", async (req, res) => {
       previousQuestion,
       userAnswer,
       questionNumber = 1,
+      previousExpectedAnswer,
+      previousExpectedTopics,
     } = req.body;
 
-    if (!topic || !previousQuestion || !userAnswer) {
+    const cleanedAnswer = String(userAnswer || "").trim();
+    const wordCount = cleanedAnswer.split(/\s+/).filter(Boolean).length;
+    const minWords = getMinWordsForDifficulty(difficulty);
+
+    if (!topic || !previousQuestion || !cleanedAnswer || wordCount < minWords) {
       return res.status(400).json({
-        error: "topic, previousQuestion, and userAnswer are required",
+        error: `Please provide a meaningful answer (${minWords}+ word${minWords > 1 ? "s" : ""} for ${difficulty} mode).`,
       });
     }
 
     const evaluation = await evaluateLiveInterviewAnswer({
       topic: topic.trim(),
       question: previousQuestion,
-      userAnswer,
+      userAnswer: cleanedAnswer,
       difficulty,
       questionNumber,
+      expectedAnswer: previousExpectedAnswer,
+      expectedTopics: previousExpectedTopics,
     });
 
     const followUpQuestion = await generateLiveInterviewQuestion(
       topic.trim(),
       difficulty,
       Number(questionNumber) + 1,
-      `Previous question: ${previousQuestion}\nCandidate answer: ${userAnswer}\nFeedback summary: ${evaluation.feedback}`,
+      `Previous question: ${previousQuestion}\nCandidate answer: ${cleanedAnswer}\nFeedback summary: ${evaluation.feedback}`,
     );
 
     res.json({
@@ -79,6 +94,8 @@ router.post("/answer", async (req, res) => {
       guidance: evaluation.guidance,
       referenceAnswer: evaluation.referenceAnswer,
       semanticSimilarity: evaluation.semanticSimilarity,
+      topicCoverage: evaluation.topicCoverage,
+      coveredTopics: evaluation.coveredTopics,
       matchedKeyTerms: evaluation.matchedKeyTerms,
       missingKeyTerms: evaluation.missingKeyTerms,
       followUpQuestion,

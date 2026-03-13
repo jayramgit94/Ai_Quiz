@@ -47,6 +47,13 @@ const upload = multer({
   },
 });
 
+function getMinWordsForDifficulty(difficulty = "medium") {
+  const level = String(difficulty || "medium").toLowerCase();
+  if (level === "easy") return 1;
+  if (level === "hard") return 4;
+  return 2;
+}
+
 /**
  * Extract text from uploaded file
  */
@@ -221,11 +228,19 @@ router.post("/evaluate-answer", async (req, res) => {
     }
 
     // Limit transcript length to prevent abuse
-    const safeTranscript = (transcript || "").substring(0, 10000);
+    const safeTranscript = (transcript || "").substring(0, 10000).trim();
+    const wordCount = safeTranscript.split(/\s+/).filter(Boolean).length;
 
     const session = await ResumeInterview.findOne({ sessionId });
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
+    }
+
+    const minWords = getMinWordsForDifficulty(session.config?.difficulty);
+    if (!safeTranscript || wordCount < minWords) {
+      return res.status(400).json({
+        error: `No meaningful answer detected. Please provide at least ${minWords} word${minWords > 1 ? "s" : ""}.`,
+      });
     }
 
     const question = session.questions[questionIndex];
@@ -239,6 +254,7 @@ router.post("/evaluate-answer", async (req, res) => {
       safeTranscript,
       question.expectedTopics || [],
       question.category,
+      session.config?.difficulty || "medium",
     );
 
     // Store response
@@ -248,7 +264,7 @@ router.post("/evaluate-answer", async (req, res) => {
       category: question.category,
       expectedTopics: question.expectedTopics,
       transcript: safeTranscript,
-      wordCount: safeTranscript.split(/\s+/).filter(Boolean).length,
+      wordCount,
       duration: duration || 0,
       evaluation,
     };

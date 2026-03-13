@@ -37,7 +37,7 @@
 
 .admin-stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.85rem;
   margin-bottom: 1rem;
 }
@@ -62,6 +62,46 @@
 .admin-table-wrap {
   padding: 1rem;
   border-radius: 20px;
+}
+
+.admin-secondary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+  margin-top: 0.9rem;
+}
+
+.admin-reviews-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.admin-review-item {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.75rem;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+
+.admin-review-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.admin-review-item p {
+  margin: 0 0 0.35rem;
+  color: var(--text-secondary);
+}
+
+.admin-review-item small {
+  color: var(--text-muted);
+}
+
+.admin-empty {
+  color: var(--text-muted);
+  margin: 0;
 }
 
 .admin-table-scroll {
@@ -90,6 +130,10 @@
 @media (max-width: 900px) {
   .admin-stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-secondary-grid {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -11,7 +11,11 @@ const api = axios.create({
 // ─── AUTH INTERCEPTOR ───
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
-  if (token) {
+  const hasExplicitAuthHeader =
+    Boolean(config.headers?.Authorization) ||
+    Boolean(config.headers?.authorization);
+
+  if (token && !hasExplicitAuthHeader) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -21,7 +25,10 @@ let isRedirecting = false;
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401 && !isRedirecting) {
+    const requestUrl = String(err.config?.url || "");
+    const isAdminApi = requestUrl.includes("/admin/");
+
+    if (err.response?.status === 401 && !isRedirecting && !isAdminApi) {
       isRedirecting = true;
       localStorage.removeItem("token");
       localStorage.removeItem("user");

@@ -175,11 +175,26 @@ function parseQuestionAnswerDocument(rawText) {
 }
 
 function tokenize(value) {
+  const normalizeToken = (token) => {
+    if (!token) return "";
+    let normalized = token.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (normalized.endsWith("ing") && normalized.length > 5) {
+      normalized = normalized.slice(0, -3);
+    } else if (normalized.endsWith("ed") && normalized.length > 4) {
+      normalized = normalized.slice(0, -2);
+    } else if (normalized.endsWith("es") && normalized.length > 4) {
+      normalized = normalized.slice(0, -2);
+    } else if (normalized.endsWith("s") && normalized.length > 3) {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized;
+  };
+
   return (value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/[^a-z0-9\s]/gi, " ")
     .split(/\s+/)
-    .filter((token) => token && token.length > 2 && !STOP_WORDS.has(token));
+    .map(normalizeToken)
+    .filter((token) => token && token.length > 1 && !STOP_WORDS.has(token));
 }
 
 function toFrequencyMap(tokens) {
@@ -236,15 +251,42 @@ function compareAnswers(userAnswer, referenceAnswer) {
   const cosine = cosineSimilarity(userTokens, refTokens);
   const jaccard = jaccardSimilarity(userTokens, refTokens);
 
-  const uniqueRef = [...new Set(refTokens)];
-  const keyTerms = uniqueRef.slice(0, 18);
+  const refFrequency = toFrequencyMap(refTokens);
+  const keyTerms = [...refFrequency.entries()]
+    .sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return b[0].length - a[0].length;
+    })
+    .map(([term]) => term)
+    .slice(0, 22);
   const userSet = new Set(userTokens);
 
-  const matched = keyTerms.filter((term) => userSet.has(term));
+  const softMatch = (term) => {
+    if (userSet.has(term)) return true;
+    for (const token of userSet) {
+      if (token.startsWith(term) || term.startsWith(token)) return true;
+      if (token.includes(term) || term.includes(token)) {
+        if (Math.min(token.length, term.length) >= 4) return true;
+      }
+    }
+    return false;
+  };
+
+  const matched = keyTerms.filter((term) => softMatch(term));
   const keyCoverage = keyTerms.length ? matched.length / keyTerms.length : 0;
 
+  const lengthBonus =
+    userTokens.length >= 8 && refTokens.length >= 8
+      ? 0.04
+      : userTokens.length >= 4
+        ? 0.02
+        : 0;
+
   const semanticSimilarity = Math.round(
-    Math.min(1, cosine * 0.55 + jaccard * 0.2 + keyCoverage * 0.25) * 100,
+    Math.min(
+      1,
+      cosine * 0.42 + jaccard * 0.2 + keyCoverage * 0.34 + lengthBonus,
+    ) * 100,
   );
 
   return {

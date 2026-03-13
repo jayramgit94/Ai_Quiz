@@ -1,6 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const Review = require("../models/Review");
 
 const router = express.Router();
 
@@ -42,12 +43,18 @@ router.post("/login", async (req, res) => {
 
 router.get("/overview", adminAuth, async (req, res) => {
   try {
-    const users = await User.find({})
-      .select(
-        "displayName email xp level streak totalQuizzes totalInterviews bestAccuracy totalCorrect totalQuestions updatedAt createdAt",
-      )
-      .sort({ updatedAt: -1 })
-      .lean();
+    const [users, reviews] = await Promise.all([
+      User.find({})
+        .select(
+          "displayName email xp level streak totalQuizzes totalInterviews bestAccuracy totalCorrect totalQuestions updatedAt createdAt",
+        )
+        .sort({ updatedAt: -1 })
+        .lean(),
+      Review.find({})
+        .select("displayName rating note createdAt")
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
 
     const now = Date.now();
     const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
@@ -78,6 +85,14 @@ router.get("/overview", adminAuth, async (req, res) => {
     const overallAccuracy = totals.totalQuestions
       ? Math.round((totals.totalCorrect / totals.totalQuestions) * 100)
       : 0;
+    const avgReviewRating = reviews.length
+      ? Number(
+          (
+            reviews.reduce((sum, item) => sum + (item.rating || 0), 0) /
+            reviews.length
+          ).toFixed(1),
+        )
+      : 0;
 
     const topUsers = [...users]
       .sort((a, b) => (b.xp || 0) - (a.xp || 0))
@@ -103,6 +118,13 @@ router.get("/overview", adminAuth, async (req, res) => {
         createdAt: u.createdAt,
       }));
 
+    const recentReviews = reviews.slice(0, 10).map((item) => ({
+      displayName: item.displayName,
+      rating: item.rating,
+      note: item.note,
+      createdAt: item.createdAt,
+    }));
+
     res.json({
       summary: {
         totalUsers: users.length,
@@ -111,9 +133,12 @@ router.get("/overview", adminAuth, async (req, res) => {
         totalInterviews: totals.totalInterviews,
         averageXp: avgXp,
         overallAccuracy,
+        totalReviews: reviews.length,
+        averageReviewRating: avgReviewRating,
       },
       topUsers,
       recentUsers,
+      recentReviews,
     });
   } catch (err) {
     console.error("Admin overview error:", err.message);

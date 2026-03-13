@@ -66,6 +66,21 @@ const PHASE = {
   RESULTS: "results",
 };
 
+function getMinWordsByDifficulty(level = "medium") {
+  const difficultyLevel = String(level || "medium").toLowerCase();
+  if (difficultyLevel === "easy") return 1;
+  if (difficultyLevel === "hard") return 4;
+  return 2;
+}
+
+function hasMeaningfulAnswer(text, level = "medium") {
+  const words = String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return words.length >= getMinWordsByDifficulty(level);
+}
+
 export default function DocumentInterview() {
   const navigate = useNavigate();
   const { user, updateUser } = useAuth();
@@ -111,6 +126,8 @@ export default function DocumentInterview() {
   const fileInputRef = useRef(null);
   const isRecordingRef = useRef(false);
   const handleStopAnswerRef = useRef(null);
+  const transcriptRef = useRef("");
+  const interimTranscriptRef = useRef("");
   const [pendingEval, setPendingEval] = useState(null);
 
   useEffect(() => {
@@ -272,8 +289,13 @@ export default function DocumentInterview() {
       }
 
       if (final) {
-        setTranscript((prev) => prev + final);
+        setTranscript((prev) => {
+          const next = prev + final;
+          transcriptRef.current = next;
+          return next;
+        });
       }
+      interimTranscriptRef.current = interim;
       setInterimTranscript(interim);
     };
 
@@ -400,8 +422,9 @@ export default function DocumentInterview() {
   };
 
   const handleStartAnswer = () => {
-    setTranscript("");
+    setError("");
     setInterimTranscript("");
+    interimTranscriptRef.current = "";
     setTimer(0);
     isRecordingRef.current = true;
     setIsRecording(true);
@@ -421,9 +444,21 @@ export default function DocumentInterview() {
       timerRef.current = null;
     }
 
-    const finalTranscript = `${transcript}${interimTranscript}`.trim();
+    const finalTranscript =
+      `${transcriptRef.current} ${interimTranscriptRef.current}`.trim();
     setTranscript(finalTranscript);
+    transcriptRef.current = finalTranscript;
     setInterimTranscript("");
+    interimTranscriptRef.current = "";
+
+    if (!hasMeaningfulAnswer(finalTranscript, difficulty)) {
+      const minWords = getMinWordsByDifficulty(difficulty);
+      setError(
+        `No meaningful answer detected. Please provide at least ${minWords} word${minWords > 1 ? "s" : ""}.`,
+      );
+      setPhase(PHASE.INTERVIEW);
+      return;
+    }
 
     setPendingEval(null);
     setPhase(PHASE.EVALUATING);
@@ -455,7 +490,9 @@ export default function DocumentInterview() {
         if (currentQ < questions.length - 1) {
           setCurrentQ((prev) => prev + 1);
           setTranscript("");
+          transcriptRef.current = "";
           setInterimTranscript("");
+          interimTranscriptRef.current = "";
           setTimer(0);
           setPhase(PHASE.INTERVIEW);
         } else {
@@ -463,12 +500,25 @@ export default function DocumentInterview() {
         }
       }, 3200);
     } catch (err) {
+      if (err.response?.status === 400) {
+        setError(
+          err.response?.data?.error || "Please provide a meaningful answer.",
+        );
+        setPhase(PHASE.INTERVIEW);
+        return;
+      }
+
       setError(
         err.response?.data?.error || "Evaluation failed for this answer.",
       );
       setTimeout(() => {
         if (currentQ < questions.length - 1) {
           setCurrentQ((prev) => prev + 1);
+          setTranscript("");
+          transcriptRef.current = "";
+          setInterimTranscript("");
+          interimTranscriptRef.current = "";
+          setTimer(0);
           setPhase(PHASE.INTERVIEW);
         } else {
           handleComplete();
@@ -516,7 +566,9 @@ export default function DocumentInterview() {
     if (currentQ < questions.length - 1) {
       setCurrentQ((prev) => prev + 1);
       setTranscript("");
+      transcriptRef.current = "";
       setInterimTranscript("");
+      interimTranscriptRef.current = "";
       setTimer(0);
     } else {
       handleComplete();
@@ -1007,39 +1059,40 @@ export default function DocumentInterview() {
               )}
             </div>
             <div className="ri-transcript-body">
-              {transcript || interimTranscript ? (
-                <>
-                  <span className="ri-transcript-final">{transcript}</span>
-                  <span className="ri-transcript-interim">
-                    {interimTranscript}
-                  </span>
-                </>
-              ) : (
-                <span className="ri-transcript-placeholder">
-                  {isRecording
-                    ? "Speak your answer. It will be transcribed in real time."
-                    : "Click Start Answering to begin recording."}
-                </span>
-              )}
+              <textarea
+                className="input ri-transcript-input"
+                rows={5}
+                placeholder={
+                  isRecording
+                    ? "Speaking... you can still edit your answer here."
+                    : "Type answer here or click Start Recording and speak."
+                }
+                value={`${transcript}${interimTranscript ? ` ${interimTranscript}` : ""}`.trim()}
+                onChange={(e) => {
+                  setTranscript(e.target.value);
+                  transcriptRef.current = e.target.value;
+                  setInterimTranscript("");
+                  interimTranscriptRef.current = "";
+                }}
+              />
             </div>
           </div>
 
           <div className="ri-actions">
-            {!isRecording ? (
+            {!isRecording && (
               <button
                 className="btn btn-primary btn-lg"
                 onClick={handleStartAnswer}
               >
-                🎤 Start Answering
-              </button>
-            ) : (
-              <button
-                className="btn btn-success btn-lg"
-                onClick={handleStopAnswer}
-              >
-                ✅ Submit Answer
+                🎤 Start Recording
               </button>
             )}
+            <button
+              className={`btn ${isRecording ? "btn-success" : "btn-outline"} btn-lg`}
+              onClick={handleStopAnswer}
+            >
+              ✅ Submit Answer
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={handleSkip}>
               Skip Question →
             </button>

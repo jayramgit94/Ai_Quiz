@@ -336,6 +336,24 @@ Rules:
   };
 }
 
+function getStrictnessConfig(difficulty = "medium") {
+  const level = String(difficulty || "medium").toLowerCase();
+  if (level === "easy") {
+    return { minWords: 1, blendWeight: 0.55 };
+  }
+  if (level === "hard") {
+    return { minWords: 4, blendWeight: 0.8 };
+  }
+  return { minWords: 2, blendWeight: 0.68 };
+}
+
+function countWords(text) {
+  return String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
 /**
  * Evaluate a live open-ended interview answer.
  */
@@ -345,9 +363,12 @@ async function evaluateLiveInterviewAnswer({
   userAnswer,
   difficulty,
   questionNumber,
+  expectedAnswer = "",
+  expectedTopics = [],
 }) {
   const safeAnswer = (userAnswer || "").trim();
-  if (safeAnswer.length < 5) {
+  const strictness = getStrictnessConfig(difficulty);
+  if (countWords(safeAnswer) < strictness.minWords) {
     return {
       score: 0,
       relevance: 0,
@@ -368,8 +389,24 @@ async function evaluateLiveInterviewAnswer({
   }
 
   const referenceGen = await generateDocumentIdealAnswer(question);
-  const referenceAnswer = referenceGen.idealAnswer || "";
+  const generatedReference = referenceGen.idealAnswer || "";
+  const referenceAnswer =
+    expectedAnswer && expectedAnswer.trim().length >= 10
+      ? expectedAnswer.trim()
+      : generatedReference;
   const similarity = compareAnswers(safeAnswer, referenceAnswer);
+
+  const expectedTopicList = Array.isArray(expectedTopics)
+    ? expectedTopics.filter(Boolean).map((t) => String(t).trim())
+    : [];
+
+  const loweredAnswer = safeAnswer.toLowerCase();
+  const coveredTopics = expectedTopicList.filter((topicItem) =>
+    loweredAnswer.includes(topicItem.toLowerCase()),
+  );
+  const topicCoverage = expectedTopicList.length
+    ? Math.round((coveredTopics.length / expectedTopicList.length) * 100)
+    : 0;
 
   const prompt = `You are evaluating a spoken interview response.
 
@@ -380,12 +417,16 @@ QUESTION #${questionNumber}: ${question}
 REFERENCE ANSWER:
 ${referenceAnswer}
 
+EXPECTED TOPICS:
+${expectedTopicList.join(", ") || "none"}
+
 CANDIDATE ANSWER:
 ${safeAnswer}
 
 DETERMINISTIC SIGNAL:
 - Semantic similarity: ${similarity.semanticSimilarity}/100
 - Missing key terms: ${similarity.missingKeyTerms.join(", ") || "none"}
+- Topic coverage: ${topicCoverage}/100
 
 Return ONLY valid JSON:
 {
@@ -411,9 +452,13 @@ Rules:
     parsed = {};
   }
 
-  const rawScore = Number(parsed.score || similarity.semanticSimilarity || 0);
+  const signalScore = Math.round(
+    similarity.semanticSimilarity * 0.75 + topicCoverage * 0.25,
+  );
+  const rawScore = Number(parsed.score || signalScore || 0);
   const blended = Math.round(
-    rawScore * 0.7 + similarity.semanticSimilarity * 0.3,
+    rawScore * strictness.blendWeight +
+      signalScore * (1 - strictness.blendWeight),
   );
 
   return {
@@ -428,6 +473,8 @@ Rules:
       Math.max(0, Number(parsed.communication || Math.max(blended - 3, 0))),
     ),
     semanticSimilarity: similarity.semanticSimilarity,
+    topicCoverage,
+    coveredTopics,
     referenceAnswer,
     matchedKeyTerms: similarity.matchedKeyTerms,
     missingKeyTerms: similarity.missingKeyTerms,
@@ -694,13 +741,33 @@ async function evaluateSpokenAnswer(
   transcript,
   expectedTopics,
   category,
+  difficulty = "medium",
 ) {
-  if (!transcript || transcript.trim().length < 5) {
+  const normalizedTranscript = (transcript || "").trim();
+  const strictness = getStrictnessConfig(difficulty);
+  const expectedTopicList = Array.isArray(expectedTopics)
+    ? expectedTopics.filter(Boolean).map((item) => String(item).trim())
+    : [];
+  const loweredAnswer = normalizedTranscript.toLowerCase();
+  const matchedTopics = expectedTopicList.filter((item) =>
+    loweredAnswer.includes(item.toLowerCase()),
+  );
+  const missingTopics = expectedTopicList.filter(
+    (item) => !matchedTopics.includes(item),
+  );
+  const topicCoverage = expectedTopicList.length
+    ? Math.round((matchedTopics.length / expectedTopicList.length) * 100)
+    : 0;
+
+  if (countWords(normalizedTranscript) < strictness.minWords) {
     return {
       score: 0,
       relevance: 0,
       depth: 0,
       communication: 0,
+      topicCoverage,
+      matchedTopics,
+      missingTopics,
       feedback:
         "No meaningful answer was provided. Try to articulate your thoughts even if unsure.",
       strengths: [],
@@ -712,10 +779,15 @@ async function evaluateSpokenAnswer(
 
 QUESTION: ${question}
 CATEGORY: ${category}
+DIFFICULTY: ${difficulty}
 EXPECTED TOPICS TO COVER: ${expectedTopics.join(", ")}
+DETERMINISTIC SIGNALS:
+- Topic coverage: ${topicCoverage}/100
+- Matched topics: ${matchedTopics.join(", ") || "none"}
+- Missing topics: ${missingTopics.join(", ") || "none"}
 
 CANDIDATE'S ANSWER (transcribed from speech):
-"${transcript}"
+"${normalizedTranscript}"
 
 Evaluate the answer on these criteria (0-100 each):
 1. **Relevance** - Does it actually answer the question?
@@ -753,6 +825,9 @@ Return ONLY valid JSON:
       relevance: Math.min(100, Math.max(0, parsed.relevance || 0)),
       depth: Math.min(100, Math.max(0, parsed.depth || 0)),
       communication: Math.min(100, Math.max(0, parsed.communication || 0)),
+      topicCoverage,
+      matchedTopics,
+      missingTopics,
       feedback: parsed.feedback || "Evaluation complete.",
       strengths: parsed.strengths || [],
       improvements: parsed.improvements || [],
@@ -766,6 +841,9 @@ Return ONLY valid JSON:
         relevance: Math.min(100, Math.max(0, p.relevance || 0)),
         depth: Math.min(100, Math.max(0, p.depth || 0)),
         communication: Math.min(100, Math.max(0, p.communication || 0)),
+        topicCoverage,
+        matchedTopics,
+        missingTopics,
         feedback: p.feedback || "Evaluation complete.",
         strengths: p.strengths || [],
         improvements: p.improvements || [],
@@ -776,6 +854,9 @@ Return ONLY valid JSON:
       relevance: 50,
       depth: 50,
       communication: 50,
+      topicCoverage,
+      matchedTopics,
+      missingTopics,
       feedback: "Could not fully evaluate the answer. Please try again.",
       strengths: [],
       improvements: [],
@@ -903,8 +984,10 @@ async function evaluateDocumentInterviewAnswer({
   referenceSource,
   semanticSimilarity,
   missingTerms = [],
+  difficulty = "medium",
 }) {
-  if (!userAnswer || userAnswer.trim().length < 5) {
+  const strictness = getStrictnessConfig(difficulty);
+  if (countWords(userAnswer) < strictness.minWords) {
     return {
       score: 0,
       relevance: 0,
@@ -926,6 +1009,7 @@ QUESTION:
 ${question}
 
 REFERENCE ANSWER SOURCE: ${referenceSource}
+DIFFICULTY: ${difficulty}
 REFERENCE ANSWER:
 ${referenceAnswer}
 
@@ -958,7 +1042,10 @@ Rules:
   try {
     const parsed = parseJsonFromAi(raw);
     const baseScore = Number(parsed.score || 0);
-    const blendedScore = Math.round(baseScore * 0.7 + semanticSimilarity * 0.3);
+    const blendedScore = Math.round(
+      baseScore * strictness.blendWeight +
+        semanticSimilarity * (1 - strictness.blendWeight),
+    );
 
     return {
       score: Math.min(100, Math.max(0, blendedScore)),

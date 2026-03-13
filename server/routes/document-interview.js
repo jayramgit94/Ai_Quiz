@@ -49,6 +49,13 @@ const upload = multer({
   },
 });
 
+function getMinWordsForDifficulty(difficulty = "medium") {
+  const level = String(difficulty || "medium").toLowerCase();
+  if (level === "easy") return 1;
+  if (level === "hard") return 4;
+  return 2;
+}
+
 async function extractText(filePath, sourceName) {
   const ext = path.extname(sourceName || filePath).toLowerCase();
 
@@ -219,9 +226,17 @@ router.post("/evaluate-answer", async (req, res) => {
     }
 
     const safeTranscript = (transcript || "").substring(0, 12000).trim();
+    const wordCount = safeTranscript.split(/\s+/).filter(Boolean).length;
     const session = await DocumentInterview.findOne({ sessionId });
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
+    }
+
+    const minWords = getMinWordsForDifficulty(session.config?.difficulty);
+    if (!safeTranscript || wordCount < minWords) {
+      return res.status(400).json({
+        error: `No meaningful answer detected. Please provide at least ${minWords} word${minWords > 1 ? "s" : ""}.`,
+      });
     }
 
     const question = session.questions[questionIndex];
@@ -247,6 +262,7 @@ router.post("/evaluate-answer", async (req, res) => {
       referenceSource,
       semanticSimilarity: similarity.semanticSimilarity,
       missingTerms: similarity.missingKeyTerms,
+      difficulty: session.config?.difficulty || "medium",
     });
 
     const response = {

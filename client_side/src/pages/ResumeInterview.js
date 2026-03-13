@@ -39,6 +39,21 @@ const PHASE = {
   RESULTS: "results",
 };
 
+function getMinWordsByDifficulty(level = "medium") {
+  const difficultyLevel = String(level || "medium").toLowerCase();
+  if (difficultyLevel === "easy") return 1;
+  if (difficultyLevel === "hard") return 4;
+  return 2;
+}
+
+function hasMeaningfulAnswer(text, level = "medium") {
+  const words = String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return words.length >= getMinWordsByDifficulty(level);
+}
+
 export default function ResumeInterview() {
   const navigate = useNavigate();
   const { user, updateUser } = useAuth();
@@ -87,6 +102,9 @@ export default function ResumeInterview() {
   const timerRef = useRef(null);
   const fileInputRef = useRef(null);
   const isRecordingRef = useRef(false); // kept in sync with isRecording state to avoid stale closures
+  const transcriptRef = useRef("");
+  const interimTranscriptRef = useRef("");
+  const handleStopAnswerRef = useRef(null);
 
   // ═══════════════════════════════════════════════════
   // CLEANUP
@@ -169,7 +187,7 @@ export default function ResumeInterview() {
       timerRef.current = setInterval(() => {
         setTimer((prev) => {
           if (prev >= timePerQuestion) {
-            handleStopAnswer();
+            handleStopAnswerRef.current?.();
             return 0;
           }
           return prev + 1;
@@ -245,8 +263,13 @@ export default function ResumeInterview() {
       }
 
       if (final) {
-        setTranscript((prev) => prev + final);
+        setTranscript((prev) => {
+          const next = prev + final;
+          transcriptRef.current = next;
+          return next;
+        });
       }
+      interimTranscriptRef.current = interim;
       setInterimTranscript(interim);
     };
 
@@ -390,8 +413,9 @@ export default function ResumeInterview() {
   // START ANSWERING
   // ═══════════════════════════════════════════════════
   const handleStartAnswer = () => {
-    setTranscript("");
+    setError("");
     setInterimTranscript("");
+    interimTranscriptRef.current = "";
     setTimer(0);
     isRecordingRef.current = true;
     setIsRecording(true);
@@ -413,9 +437,21 @@ export default function ResumeInterview() {
       timerRef.current = null;
     }
 
-    const currentTranscript = transcript + interimTranscript;
+    const currentTranscript =
+      `${transcriptRef.current} ${interimTranscriptRef.current}`.trim();
     setTranscript(currentTranscript);
+    transcriptRef.current = currentTranscript;
     setInterimTranscript("");
+    interimTranscriptRef.current = "";
+
+    if (!hasMeaningfulAnswer(currentTranscript, difficulty)) {
+      const minWords = getMinWordsByDifficulty(difficulty);
+      setError(
+        `No meaningful answer detected. Please provide at least ${minWords} word${minWords > 1 ? "s" : ""}.`,
+      );
+      setPhase(PHASE.INTERVIEW);
+      return;
+    }
 
     setPhase(PHASE.EVALUATING);
     setLoadingMsg("AI is evaluating your answer...");
@@ -445,7 +481,9 @@ export default function ResumeInterview() {
         if (currentQ < questions.length - 1) {
           setCurrentQ((prev) => prev + 1);
           setTranscript("");
+          transcriptRef.current = "";
           setInterimTranscript("");
+          interimTranscriptRef.current = "";
           setTimer(0);
           setPhase(PHASE.INTERVIEW);
         } else {
@@ -453,6 +491,14 @@ export default function ResumeInterview() {
         }
       }, 3000);
     } catch (err) {
+      if (err.response?.status === 400) {
+        setError(
+          err.response?.data?.error || "Please provide a meaningful answer.",
+        );
+        setPhase(PHASE.INTERVIEW);
+        return;
+      }
+
       setError("Failed to evaluate answer. Moving to next question.");
       setResponses((prev) => [
         ...prev,
@@ -468,6 +514,11 @@ export default function ResumeInterview() {
       setTimeout(() => {
         if (currentQ < questions.length - 1) {
           setCurrentQ((prev) => prev + 1);
+          setTranscript("");
+          transcriptRef.current = "";
+          setInterimTranscript("");
+          interimTranscriptRef.current = "";
+          setTimer(0);
           setPhase(PHASE.INTERVIEW);
         } else {
           handleComplete();
@@ -475,6 +526,8 @@ export default function ResumeInterview() {
       }, 2000);
     }
   };
+
+  handleStopAnswerRef.current = handleStopAnswer;
 
   // ═══════════════════════════════════════════════════
   // SKIP QUESTION
@@ -505,7 +558,9 @@ export default function ResumeInterview() {
     if (currentQ < questions.length - 1) {
       setCurrentQ((prev) => prev + 1);
       setTranscript("");
+      transcriptRef.current = "";
       setInterimTranscript("");
+      interimTranscriptRef.current = "";
       setTimer(0);
     } else {
       handleComplete();
@@ -1124,40 +1179,41 @@ export default function ResumeInterview() {
               )}
             </div>
             <div className="ri-transcript-body">
-              {transcript || interimTranscript ? (
-                <>
-                  <span className="ri-transcript-final">{transcript}</span>
-                  <span className="ri-transcript-interim">
-                    {interimTranscript}
-                  </span>
-                </>
-              ) : (
-                <span className="ri-transcript-placeholder">
-                  {isRecording
-                    ? "Start speaking... your answer will appear here in real-time"
-                    : 'Click "Start Answering" to begin recording'}
-                </span>
-              )}
+              <textarea
+                className="input ri-transcript-input"
+                rows={5}
+                placeholder={
+                  isRecording
+                    ? "Speaking... you can still edit your answer here."
+                    : "Type answer here or click Start Recording and speak."
+                }
+                value={`${transcript}${interimTranscript ? ` ${interimTranscript}` : ""}`.trim()}
+                onChange={(e) => {
+                  setTranscript(e.target.value);
+                  transcriptRef.current = e.target.value;
+                  setInterimTranscript("");
+                  interimTranscriptRef.current = "";
+                }}
+              />
             </div>
           </div>
 
           {/* Action buttons */}
           <div className="ri-actions">
-            {!isRecording ? (
+            {!isRecording && (
               <button
                 className="btn btn-primary btn-lg"
                 onClick={handleStartAnswer}
               >
-                🎤 Start Answering
-              </button>
-            ) : (
-              <button
-                className="btn btn-success btn-lg"
-                onClick={handleStopAnswer}
-              >
-                ✅ Submit Answer
+                🎤 Start Recording
               </button>
             )}
+            <button
+              className={`btn ${isRecording ? "btn-success" : "btn-outline"} btn-lg`}
+              onClick={handleStopAnswer}
+            >
+              ✅ Submit Answer
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={handleSkip}>
               Skip Question →
             </button>
@@ -1373,6 +1429,19 @@ export default function ResumeInterview() {
                   <strong>Your answer:</strong> "{r.transcript}"
                 </div>
               )}
+              <div className="di-inline-actions" style={{ marginTop: 8 }}>
+                <span className="di-ref-chip">
+                  Topic Coverage: {r.evaluation?.topicCoverage || 0}%
+                </span>
+                <span className="di-ref-chip">
+                  Matched Topics:{" "}
+                  {(r.evaluation?.matchedTopics || []).join(", ") || "-"}
+                </span>
+                <span className="di-ref-chip">
+                  Missing Topics:{" "}
+                  {(r.evaluation?.missingTopics || []).join(", ") || "-"}
+                </span>
+              </div>
               {r.evaluation?.feedback && (
                 <p className="ri-q-result-feedback">{r.evaluation.feedback}</p>
               )}

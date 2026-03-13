@@ -19,6 +19,21 @@ const PHASE = {
   RESULTS: "results",
 };
 
+function getMinWordsByDifficulty(level = "medium") {
+  const difficultyLevel = String(level || "medium").toLowerCase();
+  if (difficultyLevel === "easy") return 1;
+  if (difficultyLevel === "hard") return 4;
+  return 2;
+}
+
+function hasMeaningfulAnswer(text, level = "medium") {
+  const words = String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return words.length >= getMinWordsByDifficulty(level);
+}
+
 export default function InterviewMode() {
   const navigate = useNavigate();
 
@@ -55,6 +70,16 @@ export default function InterviewMode() {
   const timerRef = useRef(null);
   const isRecordingRef = useRef(false);
   const handleStopAnswerRef = useRef(null);
+  const answerTextRef = useRef("");
+  const interimTranscriptRef = useRef("");
+
+  useEffect(() => {
+    answerTextRef.current = answerText;
+  }, [answerText]);
+
+  useEffect(() => {
+    interimTranscriptRef.current = interimTranscript;
+  }, [interimTranscript]);
 
   const cleanupMedia = useCallback(() => {
     if (recognitionRef.current) {
@@ -212,8 +237,13 @@ export default function InterviewMode() {
       }
 
       if (final) {
-        setAnswerText((prev) => `${prev} ${final}`.trim());
+        setAnswerText((prev) => {
+          const next = `${prev} ${final}`.trim();
+          answerTextRef.current = next;
+          return next;
+        });
       }
+      interimTranscriptRef.current = interim;
       setInterimTranscript(interim);
     };
 
@@ -276,7 +306,9 @@ export default function InterviewMode() {
   };
 
   const handleStartAnswer = () => {
+    setError("");
     setInterimTranscript("");
+    interimTranscriptRef.current = "";
     setTimer(0);
     setIsRecording(true);
     isRecordingRef.current = true;
@@ -284,11 +316,8 @@ export default function InterviewMode() {
   };
 
   const handleStopAnswer = async () => {
-    const finalAnswer = `${answerText} ${interimTranscript}`.trim();
-    if (!finalAnswer) {
-      setError("Please provide an answer before submitting.");
-      return;
-    }
+    const finalAnswer =
+      `${answerTextRef.current} ${interimTranscriptRef.current}`.trim();
 
     isRecordingRef.current = false;
     setIsRecording(false);
@@ -301,6 +330,18 @@ export default function InterviewMode() {
       timerRef.current = null;
     }
     setInterimTranscript("");
+    interimTranscriptRef.current = "";
+
+    if (!hasMeaningfulAnswer(finalAnswer, difficulty)) {
+      const minWords = getMinWordsByDifficulty(difficulty);
+      setError(
+        `No meaningful answer detected. Please provide at least ${minWords} word${minWords > 1 ? "s" : ""}.`,
+      );
+      return;
+    }
+
+    setAnswerText(finalAnswer);
+    answerTextRef.current = finalAnswer;
 
     setLoading(true);
     setError("");
@@ -312,6 +353,8 @@ export default function InterviewMode() {
         previousQuestion: currentQuestion?.question,
         userAnswer: finalAnswer,
         questionNumber,
+        previousExpectedAnswer: currentQuestion?.expectedAnswer || "",
+        previousExpectedTopics: currentQuestion?.expectedTopics || [],
       });
 
       const item = {
@@ -323,6 +366,8 @@ export default function InterviewMode() {
         guidance: res.data.guidance || [],
         referenceAnswer: res.data.referenceAnswer || "",
         semanticSimilarity: res.data.semanticSimilarity || 0,
+        topicCoverage: res.data.topicCoverage || 0,
+        coveredTopics: res.data.coveredTopics || [],
         matchedKeyTerms: res.data.matchedKeyTerms || [],
         missingKeyTerms: res.data.missingKeyTerms || [],
         duration: timer,
@@ -349,7 +394,9 @@ export default function InterviewMode() {
     setCurrentQuestion(pendingNextQuestion);
     setQuestionNumber((prev) => prev + 1);
     setAnswerText("");
+    answerTextRef.current = "";
     setInterimTranscript("");
+    interimTranscriptRef.current = "";
     setTimer(0);
     setReviewData(null);
     setPendingNextQuestion(null);
@@ -716,7 +763,9 @@ export default function InterviewMode() {
               value={`${answerText}${interimTranscript ? ` ${interimTranscript}` : ""}`.trim()}
               onChange={(e) => {
                 setAnswerText(e.target.value);
+                answerTextRef.current = e.target.value;
                 setInterimTranscript("");
+                interimTranscriptRef.current = "";
               }}
               disabled={Boolean(reviewData)}
             />
@@ -724,15 +773,17 @@ export default function InterviewMode() {
 
           {!reviewData && (
             <div className="ri-actions">
-              {!isRecording ? (
+              {!isRecording && (
                 <button className="btn btn-primary" onClick={handleStartAnswer}>
-                  🎤 Start Answering
-                </button>
-              ) : (
-                <button className="btn btn-success" onClick={handleStopAnswer}>
-                  ✅ Submit Answer
+                  🎤 Start Recording
                 </button>
               )}
+              <button
+                className={`btn ${isRecording ? "btn-success" : "btn-outline"}`}
+                onClick={handleStopAnswer}
+              >
+                ✅ Submit Answer
+              </button>
               <button className="btn btn-outline" onClick={handleEndInterview}>
                 End Interview
               </button>
@@ -778,6 +829,10 @@ export default function InterviewMode() {
                 <div className="di-mini-score">
                   Semantic<strong>{reviewData.semanticSimilarity || 0}</strong>
                 </div>
+                <div className="di-mini-score">
+                  Topic Coverage
+                  <strong>{reviewData.topicCoverage || 0}%</strong>
+                </div>
               </div>
 
               <div className="explanation-box">
@@ -799,6 +854,9 @@ export default function InterviewMode() {
                 </span>
                 <span className="di-ref-chip generated">
                   Missing: {reviewData.missingKeyTerms?.join(", ") || "-"}
+                </span>
+                <span className="di-ref-chip">
+                  Covered Topics: {reviewData.coveredTopics?.join(", ") || "-"}
                 </span>
               </div>
 

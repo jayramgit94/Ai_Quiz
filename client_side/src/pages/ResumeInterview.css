@@ -567,6 +567,13 @@
   min-height: 60px;
 }
 
+.ri-transcript-input {
+  width: 100%;
+  resize: vertical;
+  line-height: 1.6;
+  min-height: 110px;
+}
+
 .ri-transcript-final {
   color: var(--text);
 }

@@ -1,10 +1,17 @@
-import { BarChart2, Shield, Users } from "lucide-react";
+import { BarChart2, Clock3, Shield, Star, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { adminLogin, getAdminOverview } from "../services/api";
 import "./AdminPage.css";
 
 const ADMIN_TOKEN_KEY = "ai-quiz-admin-token";
+
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString();
+}
 
 export default function AdminPage() {
   const navigate = useNavigate();
@@ -177,6 +184,14 @@ export default function AdminPage() {
                 <span>Overall accuracy</span>
                 <strong>{stats.overallAccuracy || 0}%</strong>
               </div>
+              <div className="card admin-stat">
+                <span>Total reviews</span>
+                <strong>{stats.totalReviews || 0}</strong>
+              </div>
+              <div className="card admin-stat">
+                <span>Average review rating</span>
+                <strong>{stats.averageReviewRating || 0}/5</strong>
+              </div>
             </div>
 
             <div className="card admin-table-wrap animate-fade-in-up delay-1">
@@ -201,19 +216,92 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(overview.topUsers || []).map((u) => (
-                      <tr key={`${u.email}-${u.displayName}`}>
-                        <td>{u.displayName}</td>
-                        <td>{u.email}</td>
-                        <td>{u.xp}</td>
-                        <td>{u.level}</td>
-                        <td>{u.totalQuizzes}</td>
-                        <td>{u.totalInterviews}</td>
-                        <td>{u.bestAccuracy}%</td>
+                    {(overview.topUsers || []).length ? (
+                      (overview.topUsers || []).map((u, idx) => (
+                        <tr key={`${u.email || "no-email"}-${idx}`}>
+                          <td>{u.displayName || "-"}</td>
+                          <td>{u.email || "-"}</td>
+                          <td>{u.xp || 0}</td>
+                          <td>{u.level || 1}</td>
+                          <td>{u.totalQuizzes || 0}</td>
+                          <td>{u.totalInterviews || 0}</td>
+                          <td>{u.bestAccuracy || 0}%</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7}>No users found.</td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            <div className="admin-secondary-grid">
+              <div className="card admin-table-wrap animate-fade-in-up delay-1">
+                <h3>
+                  <Clock3
+                    size={16}
+                    style={{ marginRight: 6, verticalAlign: "middle" }}
+                  />
+                  Recent Signups
+                </h3>
+                <div className="admin-table-scroll">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Joined</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(overview.recentUsers || []).length ? (
+                        (overview.recentUsers || []).map((u, idx) => (
+                          <tr key={`${u.email || "no-email"}-${idx}`}>
+                            <td>{u.displayName || "-"}</td>
+                            <td>{u.email || "-"}</td>
+                            <td>{formatDate(u.createdAt)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={3}>No recent signups.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="card admin-table-wrap animate-fade-in-up delay-1">
+                <h3>
+                  <Star
+                    size={16}
+                    style={{ marginRight: 6, verticalAlign: "middle" }}
+                  />
+                  Recent Reviews
+                </h3>
+                <div className="admin-reviews-list">
+                  {(overview.recentReviews || []).length ? (
+                    (overview.recentReviews || []).map((review, idx) => (
+                      <div
+                        className="admin-review-item"
+                        key={`${review.displayName}-${idx}`}
+                      >
+                        <div className="admin-review-head">
+                          <strong>{review.displayName}</strong>
+                          <span>{review.rating}/5</span>
+                        </div>
+                        <p>{review.note}</p>
+                        <small>{formatDate(review.createdAt)}</small>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="admin-empty">No reviews yet.</p>
+                  )}
+                </div>
               </div>
             </div>
           </>
