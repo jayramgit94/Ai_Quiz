@@ -4,12 +4,15 @@ const User = require("../models/User");
 
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = String(process.env.JWT_SECRET || "").trim();
 if (!JWT_SECRET && process.env.NODE_ENV === "production") {
   console.error(
     "FATAL: JWT_SECRET environment variable is required in production",
   );
   process.exit(1);
+}
+if (!JWT_SECRET && process.env.NODE_ENV !== "production") {
+  console.warn("JWT_SECRET is not set. Using development fallback secret.");
 }
 const SAFE_JWT_SECRET = JWT_SECRET || "dev_only_secret_change_in_production";
 const JWT_EXPIRES = "7d";
@@ -171,6 +174,13 @@ router.put("/profile", authMiddleware, async (req, res) => {
 router.post("/record-quiz", authMiddleware, async (req, res) => {
   try {
     const { topic, accuracy, score, totalQuestions, difficulty } = req.body;
+    const normalizedTopic = String(topic || "").trim();
+    const normalizedAccuracy = Math.min(
+      100,
+      Math.max(0, Math.round(Number(accuracy) || 0)),
+    );
+    const normalizedScore = Math.max(0, Number(score) || 0);
+    const normalizedTotalQuestions = Math.max(0, Number(totalQuestions) || 0);
 
     // Atomic increment for core stats
     const user = await User.findByIdAndUpdate(
@@ -178,8 +188,8 @@ router.post("/record-quiz", authMiddleware, async (req, res) => {
       {
         $inc: {
           totalQuizzes: 1,
-          totalCorrect: score || 0,
-          totalQuestions: totalQuestions || 0,
+          totalCorrect: normalizedScore,
+          totalQuestions: normalizedTotalQuestions,
         },
       },
       { new: true },
@@ -187,26 +197,28 @@ router.post("/record-quiz", authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: "User not found" });
 
     // Update bestAccuracy if improved
-    if (accuracy > user.bestAccuracy) user.bestAccuracy = accuracy;
+    if (normalizedAccuracy > user.bestAccuracy) {
+      user.bestAccuracy = normalizedAccuracy;
+    }
 
     // Update topic stats
     const topicIdx = user.topicStats.findIndex(
-      (t) => t.topic.toLowerCase() === topic.toLowerCase(),
+      (t) => t.topic.toLowerCase() === normalizedTopic.toLowerCase(),
     );
     if (topicIdx >= 0) {
       const ts = user.topicStats[topicIdx];
       ts.quizCount += 1;
-      ts.totalCorrect += score || 0;
-      ts.totalQuestions += totalQuestions || 0;
+      ts.totalCorrect += normalizedScore;
+      ts.totalQuestions += normalizedTotalQuestions;
       ts.avgAccuracy = Math.round((ts.totalCorrect / ts.totalQuestions) * 100);
       ts.lastPlayed = new Date();
     } else {
       user.topicStats.push({
-        topic,
+        topic: normalizedTopic,
         quizCount: 1,
-        totalCorrect: score || 0,
-        totalQuestions: totalQuestions || 0,
-        avgAccuracy: accuracy || 0,
+        totalCorrect: normalizedScore,
+        totalQuestions: normalizedTotalQuestions,
+        avgAccuracy: normalizedAccuracy,
         lastPlayed: new Date(),
       });
     }
@@ -214,8 +226,8 @@ router.post("/record-quiz", authMiddleware, async (req, res) => {
     // Add accuracy history point
     user.accuracyHistory.push({
       date: new Date().toISOString().split("T")[0],
-      accuracy: accuracy || 0,
-      topic,
+      accuracy: normalizedAccuracy,
+      topic: normalizedTopic,
     });
     // Keep last 100 entries
     if (user.accuracyHistory.length > 100) {
@@ -224,9 +236,9 @@ router.post("/record-quiz", authMiddleware, async (req, res) => {
 
     // Award XP
     let xpEarned = 10; // base XP for completing
-    if (accuracy >= 90) xpEarned += 20;
-    else if (accuracy >= 70) xpEarned += 10;
-    else if (accuracy >= 50) xpEarned += 5;
+    if (normalizedAccuracy >= 90) xpEarned += 20;
+    else if (normalizedAccuracy >= 70) xpEarned += 10;
+    else if (normalizedAccuracy >= 50) xpEarned += 5;
     if (difficulty === "hard") xpEarned += 10;
     else if (difficulty === "medium") xpEarned += 5;
 

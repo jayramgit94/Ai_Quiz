@@ -19,9 +19,10 @@ const { compareAnswers } = require("../utils/documentInterview");
 const router = express.Router();
 
 // ─── FILE UPLOAD CONFIG ───
-const uploadDir = path.join(
-  process.env.VERCEL ? "/tmp" : __dirname + "/..",
-  "uploads",
+const uploadDir = path.resolve(
+  process.env.VERCEL
+    ? path.join("/tmp", "uploads")
+    : path.join(__dirname, "..", "uploads"),
 );
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -170,7 +171,7 @@ router.post(
 // ═══════════════════════════════════════════════════════════
 // POST /generate-questions - Generate interview questions from parsed resume
 // ═══════════════════════════════════════════════════════════
-router.post("/generate-questions", async (req, res) => {
+router.post("/generate-questions", authMiddleware, async (req, res) => {
   try {
     const { sessionId } = req.body;
 
@@ -219,7 +220,7 @@ router.post("/generate-questions", async (req, res) => {
 // ═══════════════════════════════════════════════════════════
 // POST /evaluate-answer - Evaluate a single spoken answer
 // ═══════════════════════════════════════════════════════════
-router.post("/evaluate-answer", async (req, res) => {
+router.post("/evaluate-answer", authMiddleware, async (req, res) => {
   try {
     const { sessionId, questionIndex, transcript, duration } = req.body;
 
@@ -229,8 +230,15 @@ router.post("/evaluate-answer", async (req, res) => {
         .json({ error: "sessionId and questionIndex required" });
     }
 
-    // Limit transcript length to prevent abuse
-    const safeTranscript = (transcript || "").substring(0, 10000).trim();
+    const rawTranscript = String(transcript || "");
+    if (rawTranscript.length > 10000) {
+      return res.status(400).json({
+        error:
+          "Answer is too long. Please keep each response under 10000 characters.",
+      });
+    }
+
+    const safeTranscript = rawTranscript.trim();
     const wordCount = safeTranscript.split(/\s+/).filter(Boolean).length;
 
     const session = await ResumeInterview.findOne({ sessionId });
@@ -369,7 +377,7 @@ router.post("/anti-cheat", authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════
 // POST /complete - Complete interview and generate summary
 // ═══════════════════════════════════════════════════════════
-router.post("/complete", async (req, res) => {
+router.post("/complete", authMiddleware, async (req, res) => {
   try {
     const { sessionId } = req.body;
 

@@ -113,9 +113,14 @@ export default function ResumeInterview() {
   // CLEANUP
   // ═══════════════════════════════════════════════════
   useEffect(() => {
+    const mountedVideo = videoRef.current;
+
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach((t) => t.stop());
+      }
+      if (mountedVideo) {
+        mountedVideo.srcObject = null;
       }
       if (recognitionRef.current) {
         recognitionRef.current.stop();
@@ -624,6 +629,9 @@ export default function ResumeInterview() {
     if (cameraStream) {
       cameraStream.getTracks().forEach((t) => t.stop());
       setCameraStream(null);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
 
     setPhase(PHASE.EVALUATING);

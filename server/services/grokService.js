@@ -13,23 +13,32 @@ const API_KEY = process.env.GROK_API_KEY;
 
 // Auto-detect: Groq keys start with "gsk_", Grok/x.ai keys start with "xai-"
 function getApiConfig() {
-  if (!API_KEY || API_KEY === "your_grok_api_key_here") {
+  const trimmedApiKey = String(API_KEY || "").trim();
+
+  if (!trimmedApiKey || trimmedApiKey === "your_grok_api_key_here") {
     throw new Error("GROK_API_KEY is not configured. Set it in server/.env");
   }
 
-  if (API_KEY.startsWith("gsk_")) {
+  if (trimmedApiKey.startsWith("gsk_")) {
     // Groq API
     return {
       url: "https://api.groq.com/openai/v1/chat/completions",
       model: "llama-3.3-70b-versatile",
-      key: API_KEY,
+      key: trimmedApiKey,
     };
   }
+
+  if (!trimmedApiKey.startsWith("xai-")) {
+    throw new Error(
+      "GROK_API_KEY format is invalid. Expected a Groq key starting with gsk_ or an xAI key starting with xai-.",
+    );
+  }
+
   // Default: Grok / x.ai API
   return {
     url: "https://api.x.ai/v1/chat/completions",
     model: "grok-3-mini-fast",
-    key: API_KEY,
+    key: trimmedApiKey,
   };
 }
 
@@ -52,7 +61,7 @@ async function callGrok(messages, maxTokens = 4096) {
         Authorization: `Bearer ${config.key}`,
         "Content-Type": "application/json",
       },
-      timeout: 120000,
+      timeout: 300000,
     },
   );
 

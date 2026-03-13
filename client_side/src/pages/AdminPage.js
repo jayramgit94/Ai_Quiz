@@ -19,8 +19,8 @@ export default function AdminPage() {
   const [token, setToken] = useState(
     () => localStorage.getItem(ADMIN_TOKEN_KEY) || "",
   );
-  const [username, setUsername] = useState("jayramsang");
-  const [password, setPassword] = useState("942143");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [overview, setOverview] = useState(null);
@@ -94,6 +94,8 @@ export default function AdminPage() {
                 <label>Username</label>
                 <input
                   className="input"
+                  autoComplete="username"
+                  placeholder="Enter admin username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
@@ -103,6 +105,8 @@ export default function AdminPage() {
                 <input
                   className="input"
                   type="password"
+                  autoComplete="current-password"
+                  placeholder="Enter admin password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />

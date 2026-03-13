@@ -31,6 +31,13 @@ const DAILY_TOPICS = [
   "Cybersecurity",
 ];
 
+function getUtcDayOfYear(date = new Date()) {
+  const year = date.getUTCFullYear();
+  const startOfYear = Date.UTC(year, 0, 0);
+  const currentDay = Date.UTC(year, date.getUTCMonth(), date.getUTCDate());
+  return Math.floor((currentDay - startOfYear) / 86400000);
+}
+
 // ─── POST /api/leaderboard/add ───
 // Add entry to leaderboard (authenticated)
 router.post("/add", authMiddleware, async (req, res) => {
@@ -110,8 +117,13 @@ router.get("/all", async (req, res) => {
 // Get leaderboard for specific topic
 router.get("/topic/:topic", async (req, res) => {
   try {
+    const topic = String(req.params.topic || "").trim();
+    if (!topic || topic.length > 100) {
+      return res.status(400).json({ error: "Invalid topic" });
+    }
+
     const entries = await LeaderboardEntry.find({
-      topic: { $regex: new RegExp(escapeRegex(req.params.topic), "i") },
+      topic: { $regex: new RegExp(escapeRegex(topic), "i") },
     })
       .sort({ finalScore: -1 })
       .limit(50)
@@ -219,9 +231,7 @@ router.get("/daily-challenge", async (req, res) => {
 
     // Generate new daily challenge
     // Pick a random topic based on day of year for consistency
-    const dayOfYear = Math.floor(
-      (Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000,
-    );
+    const dayOfYear = getUtcDayOfYear();
     const topicIndex = dayOfYear % DAILY_TOPICS.length;
     const topic = DAILY_TOPICS[topicIndex];
     const difficulty = "medium";

@@ -96,6 +96,9 @@ export default function InterviewMode() {
       cameraStream.getTracks().forEach((track) => track.stop());
       setCameraStream(null);
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     isRecordingRef.current = false;
     setIsRecording(false);
     window.speechSynthesis?.cancel();

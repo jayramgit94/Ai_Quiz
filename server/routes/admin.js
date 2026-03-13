@@ -5,10 +5,15 @@ const Review = require("../models/Review");
 
 const router = express.Router();
 
-const JWT_SECRET =
-  process.env.JWT_SECRET || "dev_only_secret_change_in_production";
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "jayramsang";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "942143";
+const JWT_SECRET = String(process.env.JWT_SECRET || "").trim();
+const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || "").trim();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
+
+if (!JWT_SECRET && process.env.NODE_ENV !== "production") {
+  console.warn("JWT_SECRET is not set. Using development fallback secret.");
+}
+
+const SAFE_JWT_SECRET = JWT_SECRET || "dev_only_secret_change_in_production";
 
 function adminAuth(req, res, next) {
   const token = req.headers.authorization?.replace("Bearer ", "");
@@ -16,7 +21,7 @@ function adminAuth(req, res, next) {
     return res.status(401).json({ error: "Admin authentication required" });
   }
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, SAFE_JWT_SECRET);
     if (payload?.role !== "admin") {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -30,11 +35,17 @@ function adminAuth(req, res, next) {
 router.post("/login", async (req, res) => {
   const { username, password } = req.body || {};
 
+  if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+    return res.status(503).json({
+      error: "Admin login is not configured on the server.",
+    });
+  }
+
   if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
     return res.status(401).json({ error: "Invalid admin credentials" });
   }
 
-  const token = jwt.sign({ role: "admin", username }, JWT_SECRET, {
+  const token = jwt.sign({ role: "admin", username }, SAFE_JWT_SECRET, {
     expiresIn: "24h",
   });
 

@@ -133,9 +133,14 @@ export default function DocumentInterview() {
   const [pendingEval, setPendingEval] = useState(null);
 
   useEffect(() => {
+    const mountedVideo = videoRef.current;
+
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach((t) => t.stop());
+      }
+      if (mountedVideo) {
+        mountedVideo.srcObject = null;
       }
       if (recognitionRef.current) {
         recognitionRef.current.stop();
@@ -624,6 +629,9 @@ export default function DocumentInterview() {
     if (cameraStream) {
       cameraStream.getTracks().forEach((track) => track.stop());
       setCameraStream(null);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
 
     setPhase(PHASE.EVALUATING);
