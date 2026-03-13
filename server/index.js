@@ -10,6 +10,7 @@ const quizRoutes = require("./routes/quiz");
 const interviewRoutes = require("./routes/interview");
 const leaderboardRoutes = require("./routes/leaderboard");
 const resumeInterviewRoutes = require("./routes/resume-interview");
+const documentInterviewRoutes = require("./routes/document-interview");
 const authRoutes = require("./routes/auth");
 
 const app = express();
@@ -88,6 +89,7 @@ app.use("/api/quiz", quizRoutes);
 app.use("/api/interview", interviewRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/resume-interview", resumeInterviewRoutes);
+app.use("/api/document-interview", documentInterviewRoutes);
 
 // ─── HEALTH CHECK ───
 app.get("/api/health", (req, res) => {

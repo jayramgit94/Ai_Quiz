@@ -102,4 +102,31 @@ export const getResumeSession = (sessionId) =>
 export const getInterviewHistory = (userName) =>
   api.get(`/resume-interview/history/${encodeURIComponent(userName)}`);
 
+// ─── DOCUMENT INTERVIEW ───
+export const uploadInterviewDocument = (formData) =>
+  api.post("/document-interview/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 180000,
+  });
+
+export const generateDocumentQuestions = (data) =>
+  api.post("/document-interview/generate-questions", data, {
+    timeout: 180000,
+  });
+
+export const evaluateDocumentAnswer = (data) =>
+  api.post("/document-interview/evaluate-answer", data, { timeout: 120000 });
+
+export const logDocumentAntiCheat = (data) =>
+  api.post("/document-interview/anti-cheat", data);
+
+export const completeDocumentInterview = (data) =>
+  api.post("/document-interview/complete", data, { timeout: 180000 });
+
+export const getDocumentInterviewSession = (sessionId) =>
+  api.get(`/document-interview/session/${sessionId}`);
+
+export const getDocumentInterviewHistory = (userName) =>
+  api.get(`/document-interview/history/${encodeURIComponent(userName)}`);
+
 export default api;

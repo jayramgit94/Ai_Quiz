@@ -12,6 +12,7 @@ import AchievementsPage from "./pages/AchievementsPage";
 import AuthPage from "./pages/AuthPage";
 import DailyChallenge from "./pages/DailyChallenge";
 import DashboardPage from "./pages/DashboardPage";
+import DocumentInterview from "./pages/DocumentInterview";
 import InterviewMode from "./pages/InterviewMode";
 import LandingPage from "./pages/LandingPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
@@ -137,6 +138,14 @@ function AnimatedRoutes() {
           element={
             <PageWrapper>
               <ResumeInterview />
+            </PageWrapper>
+          }
+        />
+        <Route
+          path="/document-interview"
+          element={
+            <PageWrapper>
+              <DocumentInterview />
             </PageWrapper>
           }
         />

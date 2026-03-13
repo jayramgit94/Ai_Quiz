@@ -697,6 +697,203 @@ Grading scale: A+ (90-100), A (80-89), B+ (75-79), B (65-74), C+ (55-64), C (45-
   }
 }
 
+function parseJsonFromAi(raw) {
+  let cleaned = sanitizeJsonString((raw || "").trim());
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  }
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+    throw new Error("Failed to parse AI JSON");
+  }
+}
+
+async function generateDocumentIdealAnswer(question) {
+  const prompt = `You are a senior technical interviewer.
+
+Question:
+"${question}"
+
+Create a high-quality reference answer suitable for evaluating an interview response.
+
+Return ONLY valid JSON:
+{
+  "idealAnswer": "A concise but complete ideal answer in 4-8 lines",
+  "keyPoints": ["Key point 1", "Key point 2", "Key point 3"]
+}`;
+
+  const raw = await callGrok([{ role: "user", content: prompt }], 1400);
+
+  try {
+    const parsed = parseJsonFromAi(raw);
+    return {
+      idealAnswer: parsed.idealAnswer || "",
+      keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints : [],
+    };
+  } catch {
+    return { idealAnswer: "", keyPoints: [] };
+  }
+}
+
+async function evaluateDocumentInterviewAnswer({
+  question,
+  userAnswer,
+  referenceAnswer,
+  referenceSource,
+  semanticSimilarity,
+  missingTerms = [],
+}) {
+  if (!userAnswer || userAnswer.trim().length < 5) {
+    return {
+      score: 0,
+      relevance: 0,
+      accuracy: 0,
+      communicationClarity: 0,
+      strengths: [],
+      missingKeyPoints: ["No meaningful answer was provided."],
+      suggestions: [
+        "Speak your response with key concepts and concrete points.",
+      ],
+      feedback:
+        "No meaningful response detected. Try answering with a structured explanation and examples.",
+    };
+  }
+
+  const prompt = `You are evaluating an interview answer against a reference answer.
+
+QUESTION:
+${question}
+
+REFERENCE ANSWER SOURCE: ${referenceSource}
+REFERENCE ANSWER:
+${referenceAnswer}
+
+USER ANSWER:
+${userAnswer}
+
+DETERMINISTIC SIGNALS:
+- Semantic similarity score: ${semanticSimilarity}/100
+- Missing key terms detected: ${missingTerms.join(", ") || "none"}
+
+Return ONLY valid JSON:
+{
+  "score": 0-100,
+  "relevance": 0-100,
+  "accuracy": 0-100,
+  "communicationClarity": 0-100,
+  "strengths": ["strength 1", "strength 2"],
+  "missingKeyPoints": ["point 1", "point 2"],
+  "suggestions": ["suggestion 1", "suggestion 2"],
+  "feedback": "one concise paragraph"
+}
+
+Rules:
+1) Align with deterministic similarity signal.
+2) Avoid hallucinations. Do not invent facts not present in the user answer.
+3) Keep suggestions actionable and specific.`;
+
+  const raw = await callGrok([{ role: "user", content: prompt }], 1800);
+
+  try {
+    const parsed = parseJsonFromAi(raw);
+    const baseScore = Number(parsed.score || 0);
+    const blendedScore = Math.round(baseScore * 0.7 + semanticSimilarity * 0.3);
+
+    return {
+      score: Math.min(100, Math.max(0, blendedScore)),
+      relevance: Math.min(100, Math.max(0, Number(parsed.relevance || 0))),
+      accuracy: Math.min(100, Math.max(0, Number(parsed.accuracy || 0))),
+      communicationClarity: Math.min(
+        100,
+        Math.max(0, Number(parsed.communicationClarity || 0)),
+      ),
+      strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+      missingKeyPoints: Array.isArray(parsed.missingKeyPoints)
+        ? parsed.missingKeyPoints
+        : [],
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+      feedback: parsed.feedback || "Evaluation complete.",
+    };
+  } catch {
+    return {
+      score: semanticSimilarity,
+      relevance: semanticSimilarity,
+      accuracy: semanticSimilarity,
+      communicationClarity: 60,
+      strengths: [],
+      missingKeyPoints: missingTerms.slice(0, 4),
+      suggestions: [
+        "Improve coverage of key concepts from the expected answer.",
+        "Use a clearer structure: definition, reasoning, and example.",
+      ],
+      feedback: "Automatic fallback evaluation used due to parsing failure.",
+    };
+  }
+}
+
+async function generateDocumentInterviewSummary(responses, config = {}) {
+  const responseSummary = (responses || [])
+    .map(
+      (r, i) =>
+        `Q${i + 1}: Score ${r.evaluation?.score || 0}, Relevance ${r.evaluation?.relevance || 0}, Accuracy ${r.evaluation?.accuracy || 0}, Clarity ${r.evaluation?.communicationClarity || 0}`,
+    )
+    .join("\n");
+
+  const avgScore =
+    (responses || []).reduce(
+      (sum, item) => sum + (item.evaluation?.score || 0),
+      0,
+    ) / ((responses || []).length || 1);
+
+  const prompt = `You are a hiring manager summarizing a document-based mock interview.
+
+ROLE: ${config.role || "Software Engineer"}
+DIFFICULTY: ${config.difficulty || "medium"}
+
+QUESTION RESULTS:
+${responseSummary || "No responses provided."}
+
+AVERAGE SCORE: ${avgScore.toFixed(1)}/100
+
+Return ONLY valid JSON:
+{
+  "overallScore": ${Math.round(avgScore)},
+  "grade": "A+" | "A" | "B+" | "B" | "C+" | "C" | "D" | "F",
+  "summary": "short assessment paragraph",
+  "topStrengths": ["Strength 1", "Strength 2", "Strength 3"],
+  "areasToImprove": ["Area 1", "Area 2", "Area 3"],
+  "interviewReady": true/false
+}`;
+
+  const raw = await callGrok([{ role: "user", content: prompt }], 1800);
+
+  try {
+    return parseJsonFromAi(raw);
+  } catch {
+    return {
+      overallScore: Math.round(avgScore),
+      grade:
+        avgScore >= 80
+          ? "A"
+          : avgScore >= 65
+            ? "B"
+            : avgScore >= 45
+              ? "C"
+              : "D",
+      summary: "Interview summary fallback generated locally.",
+      topStrengths: [],
+      areasToImprove: [],
+      interviewReady: avgScore >= 65,
+    };
+  }
+}
+
 module.exports = {
   generateQuizQuestions,
   expandTopic,
@@ -706,4 +903,7 @@ module.exports = {
   generateResumeQuestions,
   evaluateSpokenAnswer,
   generateInterviewSummary,
+  generateDocumentIdealAnswer,
+  evaluateDocumentInterviewAnswer,
+  generateDocumentInterviewSummary,
 };

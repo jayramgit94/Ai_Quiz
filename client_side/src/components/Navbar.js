@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
-  Mic,
   Trophy,
   Zap,
 } from "lucide-react";
@@ -17,7 +16,6 @@ const NAV_ITEMS = [
   { path: "/setup", label: "Quiz", Icon: Brain },
   { path: "/daily", label: "Daily", Icon: Zap },
   { path: "/interview", label: "Interview", Icon: MessageSquare },
-  { path: "/resume-interview", label: "Resume", Icon: Mic },
   { path: "/leaderboard", label: "Ranks", Icon: Trophy },
   { path: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
 ];

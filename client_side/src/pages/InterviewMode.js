@@ -1,4 +1,4 @@
-import { MessageSquare } from "lucide-react";
+import { FileText, MessageSquare, Mic } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { startInterview, submitInterviewAnswer } from "../services/api";
@@ -101,6 +101,22 @@ export default function InterviewMode() {
               </span>
               <h2>Interview Simulation</h2>
               <p>AI-powered mock interview with adaptive follow-up questions</p>
+            </div>
+
+            <div className="interview-flow" style={{ marginBottom: "1rem" }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => navigate("/resume-interview")}
+              >
+                <Mic size={14} style={{ marginRight: 6 }} /> Resume Interview
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => navigate("/document-interview")}
+              >
+                <FileText size={14} style={{ marginRight: 6 }} /> Document
+                Interview
+              </button>
             </div>
 
             <div className="interview-flow">
