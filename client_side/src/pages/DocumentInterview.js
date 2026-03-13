@@ -109,6 +109,8 @@ export default function DocumentInterview() {
   const [cameraStream, setCameraStream] = useState(null);
   const [cameraError, setCameraError] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [permStatus, setPermStatus] = useState({ cam: null, mic: null });
+  const [permChecking, setPermChecking] = useState(false);
 
   const [tabSwitches, setTabSwitches] = useState(0);
   const [warnings, setWarnings] = useState([]);
@@ -242,6 +244,38 @@ export default function DocumentInterview() {
       speakQuestion(questions[currentQ].question);
     }
   }, [phase, currentQ, questions, speakQuestion]);
+
+  const requestPermissions = useCallback(async () => {
+    setPermChecking(true);
+    let cam = "unknown";
+    let mic = "unknown";
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      cam = "granted";
+      mic = "granted";
+      stream.getTracks().forEach((t) => t.stop());
+    } catch {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mic = "granted";
+        s.getTracks().forEach((t) => t.stop());
+      } catch {
+        mic = "denied";
+      }
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ video: true });
+        cam = "granted";
+        s.getTracks().forEach((t) => t.stop());
+      } catch {
+        cam = "denied";
+      }
+    }
+    setPermStatus({ cam, mic });
+    setPermChecking(false);
+  }, []);
 
   const startCamera = useCallback(async () => {
     try {
@@ -401,6 +435,7 @@ export default function DocumentInterview() {
       setQuestions(data.questions || []);
       setCurrentQ(0);
       setResponses([]);
+      setPendingEval(null);
 
       await startCamera();
 
@@ -884,6 +919,64 @@ export default function DocumentInterview() {
         </div>
       </div>
 
+      {/* ── Permission check ── */}
+      <div className="perm-check-card">
+        <div className="perm-check-row">
+          <span className="perm-check-label">
+            📹 Camera:{" "}
+            <strong
+              style={{
+                color:
+                  permStatus.cam === "granted"
+                    ? "var(--success)"
+                    : permStatus.cam === "denied"
+                      ? "var(--error)"
+                      : "var(--text-muted)",
+              }}
+            >
+              {permStatus.cam === "granted"
+                ? "Allowed ✓"
+                : permStatus.cam === "denied"
+                  ? "Blocked ✗"
+                  : "Not checked"}
+            </strong>
+          </span>
+          <span className="perm-check-label">
+            🎤 Microphone:{" "}
+            <strong
+              style={{
+                color:
+                  permStatus.mic === "granted"
+                    ? "var(--success)"
+                    : permStatus.mic === "denied"
+                      ? "var(--error)"
+                      : "var(--text-muted)",
+              }}
+            >
+              {permStatus.mic === "granted"
+                ? "Allowed ✓"
+                : permStatus.mic === "denied"
+                  ? "Blocked ✗"
+                  : "Not checked"}
+            </strong>
+          </span>
+        </div>
+        {(permStatus.cam === "denied" || permStatus.mic === "denied") && (
+          <p className="perm-check-warn">
+            ⚠️ Camera/mic is blocked. Allow it in your browser settings for the
+            best experience. You can still continue without.
+          </p>
+        )}
+        <button
+          className="btn btn-outline btn-sm"
+          onClick={requestPermissions}
+          disabled={permChecking}
+          type="button"
+        >
+          {permChecking ? "Checking..." : "🔐 Check / Allow Camera & Mic"}
+        </button>
+      </div>
+
       <button
         className="btn btn-primary btn-lg btn-block"
         onClick={handleStartInterview}
@@ -1067,7 +1160,7 @@ export default function DocumentInterview() {
                     ? "Speaking... you can still edit your answer here."
                     : "Type answer here or click Start Recording and speak."
                 }
-                value={`${transcript}${interimTranscript ? ` ${interimTranscript}` : ""}`.trim()}
+                value={`${transcript}${interimTranscript ? ` ${interimTranscript}` : ""}`}
                 onChange={(e) => {
                   setTranscript(e.target.value);
                   transcriptRef.current = e.target.value;
@@ -1125,11 +1218,42 @@ export default function DocumentInterview() {
             <p className="ri-eval-feedback">
               {pendingEval.evaluation.feedback}
             </p>
+            <div
+              className="di-inline-actions"
+              style={{ justifyContent: "center" }}
+            >
+              <span className="di-ref-chip">
+                Semantic: {pendingEval.evaluation?.semanticSimilarity || 0}%
+              </span>
+              <span className="di-ref-chip">
+                Relevance: {pendingEval.evaluation?.relevance || 0}%
+              </span>
+              <span className="di-ref-chip">
+                Accuracy: {pendingEval.evaluation?.accuracy || 0}%
+              </span>
+            </div>
+            <p className="di-suggestions">
+              Matched terms:{" "}
+              {(pendingEval.evaluation?.matchedKeyTerms || []).join(", ") ||
+                "-"}
+            </p>
+            <p className="di-suggestions">
+              Missing terms:{" "}
+              {(pendingEval.evaluation?.missingKeyTerms || []).join(", ") ||
+                "-"}
+            </p>
             <p className="di-suggestions">
               Missing points:{" "}
-              {(pendingEval.evaluation.missingKeyPoints || [])
-                .slice(0, 3)
+              {(pendingEval.evaluation?.missingKeyPoints || [])
+                .slice(0, 4)
                 .join(", ") || "None"}
+            </p>
+            <p
+              className="di-suggestions"
+              style={{ maxWidth: 760, marginInline: "auto" }}
+            >
+              <strong>Reference answer:</strong>{" "}
+              {pendingEval.referenceAnswer || "Reference answer unavailable."}
             </p>
           </div>
         ) : (
@@ -1270,12 +1394,13 @@ export default function DocumentInterview() {
                   referenceAnswer={item.referenceAnswer || ""}
                 />
               </div>
-              {item.referenceAnswer && (
-                <div className="wd-ref-answer">
-                  <strong>Reference answer: </strong>
-                  <span>{item.referenceAnswer}</span>
-                </div>
-              )}
+              <div className="wd-ref-answer">
+                <strong>Reference answer: </strong>
+                <span>
+                  {item.referenceAnswer ||
+                    "Reference answer could not be generated."}
+                </span>
+              </div>
               <p className="ri-q-result-feedback">
                 {item.evaluation?.feedback}
               </p>
@@ -1288,6 +1413,14 @@ export default function DocumentInterview() {
                 <span className="di-ref-chip">
                   Semantic similarity:{" "}
                   {item.evaluation?.semanticSimilarity || 0}%
+                </span>
+                <span className="di-ref-chip">
+                  Matched terms:{" "}
+                  {(item.evaluation?.matchedKeyTerms || []).join(", ") || "-"}
+                </span>
+                <span className="di-ref-chip">
+                  Missing terms:{" "}
+                  {(item.evaluation?.missingKeyTerms || []).join(", ") || "-"}
                 </span>
               </div>
               <div className="di-suggestions">
@@ -1349,6 +1482,7 @@ export default function DocumentInterview() {
               setDocPreview(null);
               setQuestions([]);
               setResponses([]);
+              setPendingEval(null);
               setResults(null);
               setFile(null);
               setTabSwitches(0);

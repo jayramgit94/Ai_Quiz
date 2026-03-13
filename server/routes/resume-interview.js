@@ -12,7 +12,9 @@ const {
   generateResumeQuestions,
   evaluateSpokenAnswer,
   generateInterviewSummary,
+  generateDocumentIdealAnswer,
 } = require("../services/grokService");
+const { compareAnswers } = require("../utils/documentInterview");
 
 const router = express.Router();
 
@@ -248,25 +250,59 @@ router.post("/evaluate-answer", async (req, res) => {
       return res.status(400).json({ error: "Invalid question index" });
     }
 
+    const expectedTopics = question.expectedTopics || [];
+
+    let referenceAnswer = "";
+    let referenceSource = "expected-topics";
+
+    if (expectedTopics.length) {
+      referenceAnswer = `A strong answer should clearly cover: ${expectedTopics.join(", ")}.`;
+    } else {
+      referenceSource = "ai-generated";
+      const generated = await generateDocumentIdealAnswer(question.question);
+      referenceAnswer = generated.idealAnswer || "";
+    }
+
+    if (!referenceAnswer.trim()) {
+      const generatedFallback = await generateDocumentIdealAnswer(
+        question.question,
+      );
+      referenceSource = "ai-generated";
+      referenceAnswer =
+        generatedFallback.idealAnswer ||
+        "Give a structured answer with definition, reasoning, and an example.";
+    }
+
+    const similarity = compareAnswers(safeTranscript, referenceAnswer);
+
     // Evaluate with AI
     const evaluation = await evaluateSpokenAnswer(
       question.question,
       safeTranscript,
-      question.expectedTopics || [],
+      expectedTopics,
       question.category,
       session.config?.difficulty || "medium",
     );
+
+    const mergedEvaluation = {
+      ...evaluation,
+      semanticSimilarity: similarity.semanticSimilarity,
+      matchedKeyTerms: similarity.matchedKeyTerms,
+      missingKeyTerms: similarity.missingKeyTerms,
+    };
 
     // Store response
     const response = {
       questionIndex,
       question: question.question,
       category: question.category,
-      expectedTopics: question.expectedTopics,
+      expectedTopics,
       transcript: safeTranscript,
       wordCount,
       duration: duration || 0,
-      evaluation,
+      referenceSource,
+      referenceAnswer,
+      evaluation: mergedEvaluation,
     };
 
     // Check if already answered (update) or new
@@ -283,7 +319,9 @@ router.post("/evaluate-answer", async (req, res) => {
 
     res.json({
       questionIndex,
-      evaluation,
+      evaluation: mergedEvaluation,
+      referenceSource,
+      referenceAnswer,
       answeredCount: session.responses.length,
       totalQuestions: session.questions.length,
     });
@@ -407,6 +445,8 @@ router.post("/complete", async (req, res) => {
         question: r.question,
         category: r.category,
         transcript: r.transcript,
+        referenceSource: r.referenceSource,
+        referenceAnswer: r.referenceAnswer || "",
         evaluation: r.evaluation,
         duration: r.duration,
       })),

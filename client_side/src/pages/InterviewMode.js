@@ -61,6 +61,8 @@ export default function InterviewMode() {
   const [cameraStream, setCameraStream] = useState(null);
   const [cameraError, setCameraError] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [permStatus, setPermStatus] = useState({ cam: null, mic: null });
+  const [permChecking, setPermChecking] = useState(false);
   const [warnings, setWarnings] = useState([]);
   const [showWarning, setShowWarning] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
@@ -176,6 +178,38 @@ export default function InterviewMode() {
       }
     };
   }, [phase, isRecording, timePerQuestion]);
+
+  const requestPermissions = useCallback(async () => {
+    setPermChecking(true);
+    let cam = "unknown";
+    let mic = "unknown";
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      cam = "granted";
+      mic = "granted";
+      stream.getTracks().forEach((t) => t.stop());
+    } catch {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mic = "granted";
+        s.getTracks().forEach((t) => t.stop());
+      } catch {
+        mic = "denied";
+      }
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ video: true });
+        cam = "granted";
+        s.getTracks().forEach((t) => t.stop());
+      } catch {
+        cam = "denied";
+      }
+    }
+    setPermStatus({ cam, mic });
+    setPermChecking(false);
+  }, []);
 
   const startCamera = useCallback(async () => {
     try {
@@ -531,6 +565,64 @@ export default function InterviewMode() {
 
             {error && <div className="ri-error">{error}</div>}
 
+            {/* ── Permission check ── */}
+            <div className="perm-check-card">
+              <div className="perm-check-row">
+                <span className="perm-check-label">
+                  📹 Camera:{" "}
+                  <strong
+                    style={{
+                      color:
+                        permStatus.cam === "granted"
+                          ? "var(--success)"
+                          : permStatus.cam === "denied"
+                            ? "var(--error)"
+                            : "var(--text-muted)",
+                    }}
+                  >
+                    {permStatus.cam === "granted"
+                      ? "Allowed ✓"
+                      : permStatus.cam === "denied"
+                        ? "Blocked ✗"
+                        : "Not checked"}
+                  </strong>
+                </span>
+                <span className="perm-check-label">
+                  🎤 Microphone:{" "}
+                  <strong
+                    style={{
+                      color:
+                        permStatus.mic === "granted"
+                          ? "var(--success)"
+                          : permStatus.mic === "denied"
+                            ? "var(--error)"
+                            : "var(--text-muted)",
+                    }}
+                  >
+                    {permStatus.mic === "granted"
+                      ? "Allowed ✓"
+                      : permStatus.mic === "denied"
+                        ? "Blocked ✗"
+                        : "Not checked"}
+                  </strong>
+                </span>
+              </div>
+              {(permStatus.cam === "denied" || permStatus.mic === "denied") && (
+                <p className="perm-check-warn">
+                  ⚠️ Please allow camera/mic in your browser settings for the
+                  best experience. You can still continue without them.
+                </p>
+              )}
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={requestPermissions}
+                disabled={permChecking}
+                type="button"
+              >
+                {permChecking ? "Checking..." : "🔐 Check / Allow Camera & Mic"}
+              </button>
+            </div>
+
             <button
               className="btn btn-primary btn-lg btn-block"
               onClick={handleStart}
@@ -760,7 +852,7 @@ export default function InterviewMode() {
               className="input interview-answer-input"
               rows={6}
               placeholder="Speak or type your answer here..."
-              value={`${answerText}${interimTranscript ? ` ${interimTranscript}` : ""}`.trim()}
+              value={`${answerText}${interimTranscript ? ` ${interimTranscript}` : ""}`}
               onChange={(e) => {
                 setAnswerText(e.target.value);
                 answerTextRef.current = e.target.value;

@@ -1790,3 +1790,32 @@ html[data-theme="dark"] .di-mini-score,
 html[data-theme="dark"] .di-ref-chip {
   border-color: rgba(186, 198, 255, 0.18);
 }
+
+/* ── Permission check widget ── */
+.perm-check-card {
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.perm-check-row {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.perm-check-label {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.perm-check-warn {
+  font-size: 0.82rem;
+  color: var(--warning, #f59e0b);
+  margin: 0;
+}

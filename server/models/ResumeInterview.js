@@ -11,11 +11,23 @@ const questionResponseSchema = new mongoose.Schema({
   transcript: { type: String, default: "" },
   wordCount: { type: Number, default: 0 },
   duration: { type: Number, default: 0 }, // seconds spent answering
+  referenceSource: {
+    type: String,
+    enum: ["expected-topics", "ai-generated"],
+    default: "ai-generated",
+  },
+  referenceAnswer: { type: String, default: "" },
   evaluation: {
     score: { type: Number, default: 0 }, // 0-100
     relevance: { type: Number, default: 0 },
     depth: { type: Number, default: 0 },
     communication: { type: Number, default: 0 },
+    topicCoverage: { type: Number, default: 0 },
+    semanticSimilarity: { type: Number, default: 0 },
+    matchedTopics: [String],
+    missingTopics: [String],
+    matchedKeyTerms: [String],
+    missingKeyTerms: [String],
     feedback: { type: String, default: "" },
     strengths: [String],
     improvements: [String],

@@ -275,6 +275,8 @@ router.post("/evaluate-answer", async (req, res) => {
       evaluation: {
         ...evaluation,
         semanticSimilarity: similarity.semanticSimilarity,
+        matchedKeyTerms: similarity.matchedKeyTerms,
+        missingKeyTerms: similarity.missingKeyTerms,
       },
     };
 
@@ -295,6 +297,8 @@ router.post("/evaluate-answer", async (req, res) => {
       evaluation: response.evaluation,
       referenceSource,
       referenceAnswer,
+      matchedKeyTerms: similarity.matchedKeyTerms,
+      missingKeyTerms: similarity.missingKeyTerms,
       answeredCount: session.responses.length,
       totalQuestions: session.questions.length,
     });

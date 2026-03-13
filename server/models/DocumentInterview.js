@@ -17,6 +17,8 @@ const documentResponseSchema = new mongoose.Schema({
     accuracy: { type: Number, default: 0 },
     communicationClarity: { type: Number, default: 0 },
     semanticSimilarity: { type: Number, default: 0 },
+    matchedKeyTerms: [String],
+    missingKeyTerms: [String],
     strengths: [String],
     missingKeyPoints: [String],
     suggestions: [String],

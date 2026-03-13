@@ -76,6 +76,7 @@ export default function ResumeInterview() {
   const [currentQ, setCurrentQ] = useState(0);
   const [responses, setResponses] = useState([]);
   const [results, setResults] = useState(null);
+  const [pendingEval, setPendingEval] = useState(null);
 
   // Interview
   const [timer, setTimer] = useState(0);
@@ -85,6 +86,8 @@ export default function ResumeInterview() {
   const [cameraStream, setCameraStream] = useState(null);
   const [cameraError, setCameraError] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [permStatus, setPermStatus] = useState({ cam: null, mic: null });
+  const [permChecking, setPermChecking] = useState(false);
 
   // Anti-cheat
   const [tabSwitches, setTabSwitches] = useState(0);
@@ -214,6 +217,38 @@ export default function ResumeInterview() {
   // ═══════════════════════════════════════════════════
   // CAMERA SETUP
   // ═══════════════════════════════════════════════════
+  const requestPermissions = useCallback(async () => {
+    setPermChecking(true);
+    let cam = "unknown";
+    let mic = "unknown";
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      cam = "granted";
+      mic = "granted";
+      stream.getTracks().forEach((t) => t.stop());
+    } catch {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mic = "granted";
+        s.getTracks().forEach((t) => t.stop());
+      } catch {
+        mic = "denied";
+      }
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ video: true });
+        cam = "granted";
+        s.getTracks().forEach((t) => t.stop());
+      } catch {
+        cam = "denied";
+      }
+    }
+    setPermStatus({ cam, mic });
+    setPermChecking(false);
+  }, []);
+
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -387,6 +422,7 @@ export default function ResumeInterview() {
       setQuestions(data.questions);
       setCurrentQ(0);
       setResponses([]);
+      setPendingEval(null);
 
       // Start camera
       await startCamera();
@@ -453,6 +489,7 @@ export default function ResumeInterview() {
       return;
     }
 
+    setPendingEval(null);
     setPhase(PHASE.EVALUATING);
     setLoadingMsg("AI is evaluating your answer...");
 
@@ -464,20 +501,23 @@ export default function ResumeInterview() {
         duration: timer,
       });
 
-      setResponses((prev) => [
-        ...prev,
-        {
-          questionIndex: currentQ,
-          question: questions[currentQ]?.question,
-          category: questions[currentQ]?.category,
-          transcript: currentTranscript,
-          duration: timer,
-          evaluation: data.evaluation,
-        },
-      ]);
+      const newResp = {
+        questionIndex: currentQ,
+        question: questions[currentQ]?.question,
+        category: questions[currentQ]?.category,
+        transcript: currentTranscript,
+        duration: timer,
+        referenceSource: data.referenceSource,
+        referenceAnswer: data.referenceAnswer || "",
+        evaluation: data.evaluation,
+      };
+
+      setResponses((prev) => [...prev, newResp]);
+      setPendingEval(newResp);
 
       // Auto-advance after showing evaluation
       setTimeout(() => {
+        setPendingEval(null);
         if (currentQ < questions.length - 1) {
           setCurrentQ((prev) => prev + 1);
           setTranscript("");
@@ -489,7 +529,7 @@ export default function ResumeInterview() {
         } else {
           handleComplete();
         }
-      }, 3000);
+      }, 4200);
     } catch (err) {
       if (err.response?.status === 400) {
         setError(
@@ -1010,6 +1050,64 @@ export default function ResumeInterview() {
         </p>
       </div>
 
+      {/* ── Permission check ── */}
+      <div className="perm-check-card">
+        <div className="perm-check-row">
+          <span className="perm-check-label">
+            📹 Camera:{" "}
+            <strong
+              style={{
+                color:
+                  permStatus.cam === "granted"
+                    ? "var(--success)"
+                    : permStatus.cam === "denied"
+                      ? "var(--error)"
+                      : "var(--text-muted)",
+              }}
+            >
+              {permStatus.cam === "granted"
+                ? "Allowed ✓"
+                : permStatus.cam === "denied"
+                  ? "Blocked ✗"
+                  : "Not checked"}
+            </strong>
+          </span>
+          <span className="perm-check-label">
+            🎤 Microphone:{" "}
+            <strong
+              style={{
+                color:
+                  permStatus.mic === "granted"
+                    ? "var(--success)"
+                    : permStatus.mic === "denied"
+                      ? "var(--error)"
+                      : "var(--text-muted)",
+              }}
+            >
+              {permStatus.mic === "granted"
+                ? "Allowed ✓"
+                : permStatus.mic === "denied"
+                  ? "Blocked ✗"
+                  : "Not checked"}
+            </strong>
+          </span>
+        </div>
+        {(permStatus.cam === "denied" || permStatus.mic === "denied") && (
+          <p className="perm-check-warn">
+            ⚠️ Camera/mic is blocked. Allow it in your browser settings for the
+            best experience. You can still continue without.
+          </p>
+        )}
+        <button
+          className="btn btn-outline btn-sm"
+          onClick={requestPermissions}
+          disabled={permChecking}
+          type="button"
+        >
+          {permChecking ? "Checking..." : "🔐 Check / Allow Camera & Mic"}
+        </button>
+      </div>
+
       <button
         className="btn btn-primary btn-lg btn-block"
         onClick={handleStartInterview}
@@ -1187,7 +1285,7 @@ export default function ResumeInterview() {
                     ? "Speaking... you can still edit your answer here."
                     : "Type answer here or click Start Recording and speak."
                 }
-                value={`${transcript}${interimTranscript ? ` ${interimTranscript}` : ""}`.trim()}
+                value={`${transcript}${interimTranscript ? ` ${interimTranscript}` : ""}`}
                 onChange={(e) => {
                   setTranscript(e.target.value);
                   transcriptRef.current = e.target.value;
@@ -1234,8 +1332,7 @@ export default function ResumeInterview() {
   // RENDER: EVALUATING PHASE
   // ═══════════════════════════════════════════════════
   const renderEvaluating = () => {
-    const lastResponse = responses[responses.length - 1];
-    const showEval = lastResponse?.evaluation?.score !== undefined;
+    const showEval = pendingEval?.evaluation?.score !== undefined;
 
     return (
       <div className="loading-screen">
@@ -1243,15 +1340,49 @@ export default function ResumeInterview() {
           <div className="ri-eval-flash animate-scale-in">
             <div
               className="ri-eval-score"
-              style={{ color: getScoreColor(lastResponse.evaluation.score) }}
+              style={{ color: getScoreColor(pendingEval.evaluation.score) }}
             >
-              {lastResponse.evaluation.score}
+              {pendingEval.evaluation.score}
             </div>
             <p className="ri-eval-feedback">
-              {lastResponse.evaluation.feedback?.substring(0, 150)}...
+              {pendingEval.evaluation.feedback}
             </p>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-              Moving to next question...
+            <div
+              className="di-inline-actions"
+              style={{ justifyContent: "center" }}
+            >
+              <span className="di-ref-chip">
+                Semantic: {pendingEval.evaluation?.semanticSimilarity || 0}%
+              </span>
+              <span className="di-ref-chip">
+                Topic Coverage: {pendingEval.evaluation?.topicCoverage || 0}%
+              </span>
+            </div>
+            <p className="di-suggestions">
+              Matched terms:{" "}
+              {(pendingEval.evaluation?.matchedKeyTerms || []).join(", ") ||
+                "-"}
+            </p>
+            <p className="di-suggestions">
+              Missing terms:{" "}
+              {(pendingEval.evaluation?.missingKeyTerms || []).join(", ") ||
+                "-"}
+            </p>
+            <p
+              className="di-suggestions"
+              style={{ maxWidth: 760, marginInline: "auto" }}
+            >
+              <strong>Reference:</strong>{" "}
+              {pendingEval.referenceSource === "provided"
+                ? "Document/expected answer"
+                : "AI generated answer"}
+            </p>
+            <p
+              className="di-suggestions"
+              style={{ maxWidth: 760, marginInline: "auto" }}
+            >
+              <strong>Reference answer:</strong>{" "}
+              {pendingEval.referenceAnswer || "Reference answer unavailable."}
             </p>
           </div>
         ) : (
@@ -1429,9 +1560,22 @@ export default function ResumeInterview() {
                   <strong>Your answer:</strong> "{r.transcript}"
                 </div>
               )}
+              {r.referenceAnswer && (
+                <div className="wd-ref-answer" style={{ marginBottom: 8 }}>
+                  <strong>Reference answer:</strong> {r.referenceAnswer}
+                </div>
+              )}
               <div className="di-inline-actions" style={{ marginTop: 8 }}>
                 <span className="di-ref-chip">
+                  {r.referenceSource === "provided"
+                    ? "Compared with expected answer"
+                    : "Compared with AI reference"}
+                </span>
+                <span className="di-ref-chip">
                   Topic Coverage: {r.evaluation?.topicCoverage || 0}%
+                </span>
+                <span className="di-ref-chip">
+                  Semantic: {r.evaluation?.semanticSimilarity || 0}%
                 </span>
                 <span className="di-ref-chip">
                   Matched Topics:{" "}
@@ -1440,6 +1584,14 @@ export default function ResumeInterview() {
                 <span className="di-ref-chip">
                   Missing Topics:{" "}
                   {(r.evaluation?.missingTopics || []).join(", ") || "-"}
+                </span>
+                <span className="di-ref-chip">
+                  Matched Terms:{" "}
+                  {(r.evaluation?.matchedKeyTerms || []).join(", ") || "-"}
+                </span>
+                <span className="di-ref-chip">
+                  Missing Terms:{" "}
+                  {(r.evaluation?.missingKeyTerms || []).join(", ") || "-"}
                 </span>
               </div>
               {r.evaluation?.feedback && (
@@ -1494,6 +1646,7 @@ export default function ResumeInterview() {
               setResumeData(null);
               setQuestions([]);
               setResponses([]);
+              setPendingEval(null);
               setResults(null);
               setFile(null);
               setTabSwitches(0);
