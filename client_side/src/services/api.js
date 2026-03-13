@@ -129,4 +129,17 @@ export const getDocumentInterviewSession = (sessionId) =>
 export const getDocumentInterviewHistory = (userName) =>
   api.get(`/document-interview/history/${encodeURIComponent(userName)}`);
 
+// ─── REVIEWS ───
+export const getHeroReviews = () => api.get("/reviews/hero");
+export const publishReview = (data) => api.post("/reviews", data);
+
+// ─── ADMIN ───
+export const adminLogin = (data) => api.post("/admin/login", data);
+export const getAdminOverview = (token) =>
+  api.get("/admin/overview", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
 export default api;

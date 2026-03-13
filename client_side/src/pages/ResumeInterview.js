@@ -46,7 +46,7 @@ export default function ResumeInterview() {
 
   // ─── STATE ───
   const [phase, setPhase] = useState(PHASE.UPLOAD);
-  const [userName, setUserName] = useState(user?.displayName || "");
+  const userName = user?.displayName || "Guest";
   const [role, setRole] = useState("Software Engineer");
   const [difficulty, setDifficulty] = useState("medium");
   const [totalQuestions, setTotalQuestions] = useState(8);
@@ -319,8 +319,8 @@ export default function ResumeInterview() {
   // UPLOAD RESUME
   // ═══════════════════════════════════════════════════
   const handleUpload = async () => {
-    if (!file || !userName.trim()) {
-      setError("Please enter your name and upload a resume.");
+    if (!file) {
+      setError("Please upload a resume.");
       return;
     }
 
@@ -674,14 +674,8 @@ export default function ResumeInterview() {
           <h3>Interview Setup</h3>
 
           <div className="input-group">
-            <label>Your Name</label>
-            <input
-              className="input"
-              type="text"
-              placeholder="Enter your full name"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-            />
+            <label>Active User</label>
+            <input className="input" type="text" value={userName} readOnly />
           </div>
 
           <div className="input-group">
@@ -823,7 +817,7 @@ export default function ResumeInterview() {
       <button
         className="btn btn-primary btn-lg btn-block"
         onClick={handleUpload}
-        disabled={!file || !userName.trim() || loading}
+        disabled={!file || loading}
       >
         {loading ? (
           <>

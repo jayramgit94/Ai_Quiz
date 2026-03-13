@@ -20,7 +20,13 @@ export default function QuizScreen() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, updateUser } = useAuth();
-  const { userName, topic, difficulty, numQuestions } = location.state || {};
+  const {
+    userName: stateUserName,
+    topic,
+    difficulty,
+    numQuestions,
+  } = location.state || {};
+  const userName = stateUserName || user?.displayName || "Guest";
 
   const [loading, setLoading] = useState(true);
   const [loadingStep, setLoadingStep] = useState(0);

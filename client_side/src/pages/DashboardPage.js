@@ -20,23 +20,21 @@ export default function DashboardPage() {
   const location = useLocation();
   const { user, updateUser } = useAuth();
   const toast = useToast();
-  const [userName, setUserName] = useState(
-    location.state?.userName || user?.displayName || "",
-  );
+  const userName = location.state?.userName || user?.displayName || "";
   const [progress, setProgress] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
   useEffect(() => {
-    if (userName) loadProgress();
+    if (userName) loadProgress(userName);
     // eslint-disable-next-line
-  }, []);
+  }, [userName]);
 
-  const loadProgress = async () => {
-    if (!userName.trim()) return;
+  const loadProgress = async (name = userName) => {
+    if (!name.trim()) return;
     setLoading(true);
     try {
-      const res = await getUserProgress(userName.trim());
+      const res = await getUserProgress(name.trim());
       setProgress(res.data);
       setSearched(true);
     } catch (err) {
@@ -140,24 +138,21 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Search */}
         <div className="dash-search animate-fade-in-up delay-1">
           <input
             className="input"
-            placeholder="Enter your username"
-            value={userName}
-            onChange={(e) => setUserName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && loadProgress()}
+            value={userName || "Not signed in"}
+            readOnly
           />
           <button
             className="btn btn-primary"
-            onClick={loadProgress}
-            disabled={loading}
+            onClick={() => loadProgress(userName)}
+            disabled={loading || !userName}
           >
             {loading ? (
               <span className="spinner" style={{ width: 18, height: 18 }} />
             ) : (
-              "Load Progress"
+              "Refresh"
             )}
           </button>
         </div>

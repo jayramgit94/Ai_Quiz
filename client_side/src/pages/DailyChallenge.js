@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { addToLeaderboard, getDailyChallenge } from '../services/api';
-import './DailyChallenge.css';
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { addToLeaderboard, getDailyChallenge } from "../services/api";
+import "./DailyChallenge.css";
 
 export default function DailyChallenge() {
   const navigate = useNavigate();
@@ -17,7 +17,7 @@ export default function DailyChallenge() {
   const [timer, setTimer] = useState(0);
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
-  const [userName, setUserName] = useState(user?.displayName || '');
+  const userName = user?.displayName || "Guest";
   const [nameSubmitted, setNameSubmitted] = useState(false);
 
   useEffect(() => {
@@ -30,7 +30,7 @@ export default function DailyChallenge() {
       const res = await getDailyChallenge();
       setChallenge(res.data);
     } catch (err) {
-      console.error('Daily challenge fetch failed:', err);
+      console.error("Daily challenge fetch failed:", err);
     }
     setLoading(false);
   };
@@ -43,7 +43,6 @@ export default function DailyChallenge() {
   };
 
   const handleStartQuiz = () => {
-    if (!userName.trim()) return;
     setNameSubmitted(true);
     startTimer();
   };
@@ -62,7 +61,7 @@ export default function DailyChallenge() {
       questionIndex: currentQ,
       selectedAnswer,
       isCorrect,
-      confidence: 'medium',
+      confidence: "medium",
       timeTaken: timer,
     };
 
@@ -82,7 +81,9 @@ export default function DailyChallenge() {
   };
 
   const correctCount = answers.filter((a) => a.isCorrect).length;
-  const accuracy = challenge ? Math.round((correctCount / challenge.questions.length) * 100) : 0;
+  const accuracy = challenge
+    ? Math.round((correctCount / challenge.questions.length) * 100)
+    : 0;
 
   const handleSaveScore = async () => {
     try {
@@ -96,9 +97,9 @@ export default function DailyChallenge() {
         difficulty: challenge.difficulty,
         totalQuestions: challenge.questions.length,
       });
-      navigate('/leaderboard');
+      navigate("/leaderboard");
     } catch (err) {
-      console.error('Save failed:', err);
+      console.error("Save failed:", err);
     }
   };
 
@@ -118,10 +119,17 @@ export default function DailyChallenge() {
     return (
       <div className="daily-page has-navbar">
         <div className="container-sm">
-          <div className="card animate-fade-in-up" style={{ textAlign: 'center', padding: '3rem' }}>
+          <div
+            className="card animate-fade-in-up"
+            style={{ textAlign: "center", padding: "3rem" }}
+          >
             <h2>⚠️ Couldn't load today's challenge</h2>
-            <p style={{ color: 'var(--text-secondary)' }}>Please try again later or check your connection.</p>
-            <button className="btn btn-primary" onClick={() => navigate('/')}>Go Home</button>
+            <p style={{ color: "var(--text-secondary)" }}>
+              Please try again later or check your connection.
+            </p>
+            <button className="btn btn-primary" onClick={() => navigate("/")}>
+              Go Home
+            </button>
           </div>
         </div>
       </div>
@@ -133,21 +141,34 @@ export default function DailyChallenge() {
     return (
       <div className="daily-page has-navbar">
         <div className="container-sm">
-          <button className="btn btn-ghost btn-sm back-btn" onClick={() => navigate('/')}>← Back</button>
+          <button
+            className="btn btn-ghost btn-sm back-btn"
+            onClick={() => navigate("/")}
+          >
+            ← Back
+          </button>
           <div className="card daily-intro animate-fade-in-up">
             <div className="daily-badge">🔥 Daily Challenge</div>
             <h2>{challenge.topic}</h2>
             <p className="daily-meta">
-              <span className="badge badge-primary">{challenge.difficulty}</span>
+              <span className="badge badge-primary">
+                {challenge.difficulty}
+              </span>
               <span>{challenge.questions.length} questions</span>
               <span>{new Date().toLocaleDateString()}</span>
             </p>
-            <p className="daily-desc">Everyone gets the same questions today. Complete the challenge and see how you rank on the leaderboard!</p>
+            <p className="daily-desc">
+              Everyone gets the same questions today. Complete the challenge and
+              see how you rank on the leaderboard!
+            </p>
             <div className="input-group">
-              <label>Your Name</label>
-              <input className="input" placeholder="Enter your name" value={userName} onChange={(e) => setUserName(e.target.value)} />
+              <label>Active User</label>
+              <input className="input" value={userName} readOnly />
             </div>
-            <button className="btn btn-primary btn-lg btn-block" disabled={!userName.trim()} onClick={handleStartQuiz}>
+            <button
+              className="btn btn-primary btn-lg btn-block"
+              onClick={handleStartQuiz}
+            >
               Start Challenge →
             </button>
           </div>
@@ -167,7 +188,9 @@ export default function DailyChallenge() {
 
             <div className="results-grid">
               <div className="result-stat">
-                <span className="stat-value">{correctCount}/{challenge.questions.length}</span>
+                <span className="stat-value">
+                  {correctCount}/{challenge.questions.length}
+                </span>
                 <span className="stat-label">Correct</span>
               </div>
               <div className="result-stat">
@@ -181,13 +204,19 @@ export default function DailyChallenge() {
             </div>
 
             <div className="results-actions">
-              <button className="btn btn-primary btn-lg" onClick={handleSaveScore}>
+              <button
+                className="btn btn-primary btn-lg"
+                onClick={handleSaveScore}
+              >
                 Save & View Leaderboard
               </button>
-              <button className="btn btn-outline" onClick={() => navigate('/dashboard')}>
+              <button
+                className="btn btn-outline"
+                onClick={() => navigate("/dashboard")}
+              >
                 Dashboard
               </button>
-              <button className="btn btn-ghost" onClick={() => navigate('/')}>
+              <button className="btn btn-ghost" onClick={() => navigate("/")}>
                 Home
               </button>
             </div>
@@ -198,16 +227,27 @@ export default function DailyChallenge() {
               {challenge.questions.map((q, i) => {
                 const ans = answers[i];
                 return (
-                  <div key={i} className={`review-item ${ans?.isCorrect ? 'correct' : 'incorrect'}`}>
+                  <div
+                    key={i}
+                    className={`review-item ${ans?.isCorrect ? "correct" : "incorrect"}`}
+                  >
                     <div className="review-q">
-                      <span className="review-icon">{ans?.isCorrect ? '✅' : '❌'}</span>
+                      <span className="review-icon">
+                        {ans?.isCorrect ? "✅" : "❌"}
+                      </span>
                       <span>{q.question}</span>
                     </div>
                     <div className="review-detail">
-                      <span>Your answer: <strong>{ans?.selectedAnswer}</strong></span>
-                      <span>Correct: <strong>{q.correctAnswer}</strong></span>
+                      <span>
+                        Your answer: <strong>{ans?.selectedAnswer}</strong>
+                      </span>
+                      <span>
+                        Correct: <strong>{q.correctAnswer}</strong>
+                      </span>
                     </div>
-                    {q.explanation && <p className="review-exp">{q.explanation}</p>}
+                    {q.explanation && (
+                      <p className="review-exp">{q.explanation}</p>
+                    )}
                   </div>
                 );
               })}
@@ -234,7 +274,12 @@ export default function DailyChallenge() {
         </div>
 
         <div className="progress-bar">
-          <div className="progress-fill" style={{ width: `${((currentQ + 1) / challenge.questions.length) * 100}%` }} />
+          <div
+            className="progress-fill"
+            style={{
+              width: `${((currentQ + 1) / challenge.questions.length) * 100}%`,
+            }}
+          />
         </div>
         <div className="progress-label">
           Question {currentQ + 1} of {challenge.questions.length}
@@ -246,14 +291,20 @@ export default function DailyChallenge() {
           <div className="options-list">
             {q.options.map((opt, i) => {
               const letter = opt.charAt(0);
-              let cls = 'option-btn';
-              if (selectedAnswer === letter) cls += ' selected';
+              let cls = "option-btn";
+              if (selectedAnswer === letter) cls += " selected";
               if (showResult) {
-                if (letter === q.correctAnswer) cls += ' correct';
-                else if (letter === selectedAnswer && !isCorrect) cls += ' incorrect';
+                if (letter === q.correctAnswer) cls += " correct";
+                else if (letter === selectedAnswer && !isCorrect)
+                  cls += " incorrect";
               }
               return (
-                <button key={i} className={cls} onClick={() => handleSelect(letter)} disabled={showResult}>
+                <button
+                  key={i}
+                  className={cls}
+                  onClick={() => handleSelect(letter)}
+                  disabled={showResult}
+                >
                   <span className="option-letter">{letter}</span>
                   <span className="option-text">{opt.substring(2).trim()}</span>
                 </button>
@@ -262,16 +313,22 @@ export default function DailyChallenge() {
           </div>
 
           {!showResult && (
-            <button className="btn btn-primary btn-block" onClick={handleConfirm} disabled={!selectedAnswer}>
+            <button
+              className="btn btn-primary btn-block"
+              onClick={handleConfirm}
+              disabled={!selectedAnswer}
+            >
               Confirm Answer
             </button>
           )}
 
           {showResult && (
             <div className="feedback-section animate-fade-in-up">
-              <div className={`result-banner ${isCorrect ? 'banner-correct' : 'banner-incorrect'}`}>
-                <span className="result-emoji">{isCorrect ? '🎉' : '😞'}</span>
-                <span>{isCorrect ? 'Correct!' : 'Incorrect'}</span>
+              <div
+                className={`result-banner ${isCorrect ? "banner-correct" : "banner-incorrect"}`}
+              >
+                <span className="result-emoji">{isCorrect ? "🎉" : "😞"}</span>
+                <span>{isCorrect ? "Correct!" : "Incorrect"}</span>
               </div>
 
               {q.explanation && (
@@ -289,8 +346,13 @@ export default function DailyChallenge() {
                 </div>
               )}
 
-              <button className="btn btn-primary btn-block" onClick={handleNext}>
-                {currentQ + 1 >= challenge.questions.length ? 'See Results' : 'Next Question →'}
+              <button
+                className="btn btn-primary btn-block"
+                onClick={handleNext}
+              >
+                {currentQ + 1 >= challenge.questions.length
+                  ? "See Results"
+                  : "Next Question →"}
               </button>
             </div>
           )}

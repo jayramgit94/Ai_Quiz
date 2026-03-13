@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import {
   Route,
   BrowserRouter as Router,
@@ -10,6 +11,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import AchievementsPage from "./pages/AchievementsPage";
 import AuthPage from "./pages/AuthPage";
+import AdminPage from "./pages/AdminPage";
 import DailyChallenge from "./pages/DailyChallenge";
 import DashboardPage from "./pages/DashboardPage";
 import DocumentInterview from "./pages/DocumentInterview";
@@ -58,6 +60,14 @@ function AnimatedRoutes() {
           element={
             <PageWrapper>
               <LandingPage />
+            </PageWrapper>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <PageWrapper>
+              <AdminPage />
             </PageWrapper>
           }
         />
@@ -163,12 +173,26 @@ function AnimatedRoutes() {
 }
 
 function App() {
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem("ai-quiz-theme") || "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("ai-quiz-theme", theme);
+  }, [theme]);
+
   return (
     <Router>
       <AuthProvider>
         <ToastProvider>
           <div className="app">
-            <Navbar />
+            <Navbar
+              theme={theme}
+              onToggleTheme={() =>
+                setTheme((current) => (current === "light" ? "dark" : "light"))
+              }
+            />
             <AnimatedRoutes />
           </div>
         </ToastProvider>

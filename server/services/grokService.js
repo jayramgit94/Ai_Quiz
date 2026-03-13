@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { compareAnswers } = require("../utils/documentInterview");
 
 // Sanitize control characters that break JSON.parse
 function sanitizeJsonString(str) {
@@ -286,6 +287,160 @@ Return ONLY valid JSON:
     correctAnswer: (parsed.correctAnswer || "A").charAt(0).toUpperCase(),
     explanation: parsed.explanation || "",
     interviewTip: parsed.interviewTip || "",
+  };
+}
+
+/**
+ * Generate a live (open-ended) interview question.
+ */
+async function generateLiveInterviewQuestion(
+  topic,
+  difficulty,
+  questionNumber,
+  previousContext = "",
+) {
+  const contextNote = previousContext
+    ? `Use this context to generate a meaningful follow-up question:\n${previousContext}`
+    : "Generate the first open-ended interview question.";
+
+  const prompt = `You are conducting a real technical interview.
+
+Topic: ${topic}
+Difficulty: ${difficulty}
+Question number: ${questionNumber}
+${contextNote}
+
+Return ONLY valid JSON:
+{
+  "question": "One open-ended interview question",
+  "expectedAnswer": "A concise high-quality reference answer in 3-6 lines",
+  "expectedTopics": ["topic 1", "topic 2", "topic 3"],
+  "interviewTip": "Practical guidance for answering this question"
+}
+
+Rules:
+1) Do NOT return MCQ options.
+2) Question must be answerable verbally.
+3) Keep expectedTopics specific and technical.`;
+
+  const raw = await callGrok([{ role: "user", content: prompt }], 1800);
+  const parsed = parseJsonFromAi(raw);
+
+  return {
+    question: parsed.question || `Explain ${topic} in detail.`,
+    expectedAnswer: parsed.expectedAnswer || "",
+    expectedTopics: Array.isArray(parsed.expectedTopics)
+      ? parsed.expectedTopics
+      : [],
+    interviewTip: parsed.interviewTip || "Structure your answer clearly.",
+  };
+}
+
+/**
+ * Evaluate a live open-ended interview answer.
+ */
+async function evaluateLiveInterviewAnswer({
+  topic,
+  question,
+  userAnswer,
+  difficulty,
+  questionNumber,
+}) {
+  const safeAnswer = (userAnswer || "").trim();
+  if (safeAnswer.length < 5) {
+    return {
+      score: 0,
+      relevance: 0,
+      depth: 0,
+      communication: 0,
+      semanticSimilarity: 0,
+      referenceAnswer: "",
+      matchedKeyTerms: [],
+      missingKeyTerms: [],
+      feedback:
+        "No meaningful answer detected. Try giving a structured answer with key concepts and a short example.",
+      guidance: [
+        "Start with a direct definition or approach.",
+        "Mention technical trade-offs.",
+        "Close with a practical example.",
+      ],
+    };
+  }
+
+  const referenceGen = await generateDocumentIdealAnswer(question);
+  const referenceAnswer = referenceGen.idealAnswer || "";
+  const similarity = compareAnswers(safeAnswer, referenceAnswer);
+
+  const prompt = `You are evaluating a spoken interview response.
+
+TOPIC: ${topic}
+DIFFICULTY: ${difficulty}
+QUESTION #${questionNumber}: ${question}
+
+REFERENCE ANSWER:
+${referenceAnswer}
+
+CANDIDATE ANSWER:
+${safeAnswer}
+
+DETERMINISTIC SIGNAL:
+- Semantic similarity: ${similarity.semanticSimilarity}/100
+- Missing key terms: ${similarity.missingKeyTerms.join(", ") || "none"}
+
+Return ONLY valid JSON:
+{
+  "score": 0-100,
+  "relevance": 0-100,
+  "depth": 0-100,
+  "communication": 0-100,
+  "feedback": "short interview-style feedback paragraph",
+  "guidance": ["actionable suggestion 1", "actionable suggestion 2", "actionable suggestion 3"]
+}
+
+Rules:
+1) Do not hallucinate facts not present in candidate answer.
+2) Keep feedback practical and encouraging.
+3) Respect deterministic signal.`;
+
+  let parsed;
+  try {
+    parsed = parseJsonFromAi(
+      await callGrok([{ role: "user", content: prompt }], 1800),
+    );
+  } catch {
+    parsed = {};
+  }
+
+  const rawScore = Number(parsed.score || similarity.semanticSimilarity || 0);
+  const blended = Math.round(
+    rawScore * 0.7 + similarity.semanticSimilarity * 0.3,
+  );
+
+  return {
+    score: Math.min(100, Math.max(0, blended)),
+    relevance: Math.min(100, Math.max(0, Number(parsed.relevance || blended))),
+    depth: Math.min(
+      100,
+      Math.max(0, Number(parsed.depth || Math.max(blended - 5, 0))),
+    ),
+    communication: Math.min(
+      100,
+      Math.max(0, Number(parsed.communication || Math.max(blended - 3, 0))),
+    ),
+    semanticSimilarity: similarity.semanticSimilarity,
+    referenceAnswer,
+    matchedKeyTerms: similarity.matchedKeyTerms,
+    missingKeyTerms: similarity.missingKeyTerms,
+    feedback:
+      parsed.feedback ||
+      "Good attempt. Improve structure: answer directly, explain reasoning, and give a concrete example.",
+    guidance: Array.isArray(parsed.guidance)
+      ? parsed.guidance.slice(0, 4)
+      : [
+          "Answer with a 3-part structure: core concept, implementation, and example.",
+          "Use precise technical vocabulary for the topic.",
+          "Highlight trade-offs and edge cases where relevant.",
+        ],
   };
 }
 
@@ -899,6 +1054,8 @@ module.exports = {
   expandTopic,
   generateInterviewQuestion,
   evaluateInterviewAnswer,
+  generateLiveInterviewQuestion,
+  evaluateLiveInterviewAnswer,
   parseResumeContent,
   generateResumeQuestions,
   evaluateSpokenAnswer,

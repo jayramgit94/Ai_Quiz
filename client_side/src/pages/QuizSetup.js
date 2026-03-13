@@ -8,7 +8,7 @@ import "./QuizSetup.css";
 export default function QuizSetup() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [userName, setUserName] = useState(user?.displayName || "");
+  const userName = user?.displayName || "Guest";
   const [topic, setTopic] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
   const [numQuestions, setNumQuestions] = useState(5);
@@ -30,10 +30,10 @@ export default function QuizSetup() {
   };
 
   const handleStart = () => {
-    if (!userName.trim() || !topic.trim()) return;
+    if (!topic.trim()) return;
     navigate("/quiz", {
       state: {
-        userName: userName.trim(),
+        userName,
         topic: topic.trim(),
         difficulty,
         numQuestions,
@@ -63,14 +63,8 @@ export default function QuizSetup() {
 
           <div className="setup-form">
             <div className="input-group">
-              <label>Your Name</label>
-              <input
-                className="input"
-                type="text"
-                placeholder="Enter your name"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-              />
+              <label>Active User</label>
+              <input className="input" type="text" value={userName} readOnly />
             </div>
 
             <div className="input-group">
@@ -161,7 +155,7 @@ export default function QuizSetup() {
             <button
               className="btn btn-primary btn-lg btn-block start-btn"
               onClick={handleStart}
-              disabled={!userName.trim() || !topic.trim()}
+              disabled={!topic.trim()}
             >
               Start Quiz →
             </button>

@@ -1,10 +1,15 @@
 import {
   BookOpen,
   Brain,
+  MessageCircle,
   Flame,
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  Moon,
+  Shield,
+  Sparkles,
+  SunMedium,
   Trophy,
   Zap,
 } from "lucide-react";
@@ -20,7 +25,7 @@ const NAV_ITEMS = [
   { path: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
 ];
 
-export default function Navbar() {
+export default function Navbar({ theme = "light", onToggleTheme }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -41,6 +46,11 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [profileOpen]);
 
+  useEffect(() => {
+    setMenuOpen(false);
+    setProfileOpen(false);
+  }, [location.pathname]);
+
   const xpProgress = (((user?.xp || 0) % 100) / 100) * 100;
 
   // Hide navbar during interview
@@ -55,10 +65,17 @@ export default function Navbar() {
     <nav className="navbar">
       <div className="navbar-inner container">
         <div className="navbar-brand" onClick={() => navigate("/")}>
-          <span className="navbar-logo">
-            <Zap size={18} />
+          <span className="navbar-logo-shell">
+            <span className="navbar-logo">
+              <Zap size={18} />
+            </span>
           </span>
-          <span className="navbar-title">AI Quiz Pro</span>
+          <div className="navbar-brand-copy">
+            <span className="navbar-title">AI Quiz Pro</span>
+            <span className="navbar-tagline">
+              Designed practice for modern learners
+            </span>
+          </div>
         </div>
 
         <div className={`navbar-links ${menuOpen ? "open" : ""}`}>
@@ -80,6 +97,19 @@ export default function Navbar() {
         </div>
 
         <div className="navbar-right">
+          <button
+            className="navbar-theme-toggle"
+            onClick={onToggleTheme}
+            aria-label={
+              theme === "light" ? "Switch to dark mode" : "Switch to light mode"
+            }
+            title={
+              theme === "light" ? "Switch to dark mode" : "Switch to light mode"
+            }
+          >
+            {theme === "light" ? <Moon size={16} /> : <SunMedium size={16} />}
+          </button>
+
           {user ? (
             <div className="navbar-profile" ref={profileRef}>
               <button
@@ -126,6 +156,9 @@ export default function Navbar() {
               {profileOpen && (
                 <div className="navbar-dropdown animate-scale-in">
                   <div className="navbar-dropdown-header">
+                    <div className="navbar-dropdown-pill">
+                      <Sparkles size={12} /> Learning profile
+                    </div>
                     <div className="navbar-dropdown-name">
                       {user.displayName}
                     </div>
@@ -174,6 +207,32 @@ export default function Navbar() {
                     />
                     Achievements
                   </button>
+                  <button
+                    className="navbar-dropdown-item"
+                    onClick={() => {
+                      navigate("/?review=1");
+                      setProfileOpen(false);
+                    }}
+                  >
+                    <MessageCircle
+                      size={14}
+                      style={{ marginRight: 7, verticalAlign: "middle" }}
+                    />
+                    Add Review
+                  </button>
+                  <button
+                    className="navbar-dropdown-item"
+                    onClick={() => {
+                      navigate("/admin");
+                      setProfileOpen(false);
+                    }}
+                  >
+                    <Shield
+                      size={14}
+                      style={{ marginRight: 7, verticalAlign: "middle" }}
+                    />
+                    Admin Panel
+                  </button>
                   <div className="navbar-dropdown-divider" />
                   <button
                     className="navbar-dropdown-item logout"
@@ -193,12 +252,20 @@ export default function Navbar() {
               )}
             </div>
           ) : (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => navigate("/login")}
-            >
-              Sign In
-            </button>
+            <div className="navbar-guest-actions">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => navigate("/register")}
+              >
+                Explore
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => navigate("/login")}
+              >
+                Sign In
+              </button>
+            </div>
           )}
 
           <button

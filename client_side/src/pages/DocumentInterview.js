@@ -72,7 +72,7 @@ export default function DocumentInterview() {
   const toast = useToast();
 
   const [phase, setPhase] = useState(PHASE.UPLOAD);
-  const [userName, setUserName] = useState(user?.displayName || "");
+  const userName = user?.displayName || "Guest";
   const [role, setRole] = useState("Software Engineer");
   const [difficulty, setDifficulty] = useState("medium");
   const [totalQuestions, setTotalQuestions] = useState(8);
@@ -339,10 +339,8 @@ export default function DocumentInterview() {
   };
 
   const handleUpload = async () => {
-    if (!file || !userName.trim()) {
-      setError(
-        "Please provide your name and upload a valid question document.",
-      );
+    if (!file) {
+      setError("Please upload a valid question document.");
       return;
     }
 
@@ -610,14 +608,8 @@ export default function DocumentInterview() {
         <div className="ri-config card">
           <h3>Interview Setup</h3>
           <div className="input-group">
-            <label>Your Name</label>
-            <input
-              className="input"
-              type="text"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-              placeholder="Enter your full name"
-            />
+            <label>Active User</label>
+            <input className="input" type="text" value={userName} readOnly />
           </div>
           <div className="input-group">
             <label>Target Role</label>
@@ -750,7 +742,7 @@ export default function DocumentInterview() {
       <button
         className="btn btn-primary btn-lg btn-block"
         onClick={handleUpload}
-        disabled={!file || !userName.trim() || loading}
+        disabled={!file || loading}
       >
         {loading ? (
           <>

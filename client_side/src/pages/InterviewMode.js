@@ -1,89 +1,390 @@
-import { FileText, MessageSquare, Mic } from "lucide-react";
-import { useState } from "react";
+import {
+  AlertTriangle,
+  Camera,
+  CheckCircle2,
+  FileText,
+  MessageSquare,
+  Mic,
+  Volume2,
+  VolumeOff,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { startInterview, submitInterviewAnswer } from "../services/api";
 import "./InterviewMode.css";
 
+const PHASE = {
+  SETUP: "setup",
+  INTERVIEW: "interview",
+  RESULTS: "results",
+};
+
 export default function InterviewMode() {
   const navigate = useNavigate();
+
+  const [phase, setPhase] = useState(PHASE.SETUP);
   const [topic, setTopic] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
-  const [started, setStarted] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [timePerQuestion, setTimePerQuestion] = useState(120);
+  const [maxQuestions, setMaxQuestions] = useState(6);
+
+  const [sessionId, setSessionId] = useState("");
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [questionNumber, setQuestionNumber] = useState(1);
-  const [selectedAnswer, setSelectedAnswer] = useState(null);
-  const [feedback, setFeedback] = useState(null);
   const [history, setHistory] = useState([]);
+  const [reviewData, setReviewData] = useState(null);
+  const [pendingNextQuestion, setPendingNextQuestion] = useState(null);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [answerText, setAnswerText] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [timer, setTimer] = useState(0);
+
+  const [cameraStream, setCameraStream] = useState(null);
+  const [cameraError, setCameraError] = useState("");
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [warnings, setWarnings] = useState([]);
+  const [showWarning, setShowWarning] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+
+  const videoRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const timerRef = useRef(null);
+  const isRecordingRef = useRef(false);
+  const handleStopAnswerRef = useRef(null);
+
+  const cleanupMedia = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    window.speechSynthesis?.cancel();
+  }, [cameraStream]);
+
+  useEffect(() => {
+    return () => {
+      cleanupMedia();
+    };
+  }, [cleanupMedia]);
+
+  useEffect(() => {
+    if (phase !== PHASE.RESULTS) return;
+    cleanupMedia();
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, [phase, cleanupMedia]);
+
+  useEffect(() => {
+    if (cameraStream && videoRef.current) {
+      videoRef.current.srcObject = cameraStream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [cameraStream, phase]);
+
+  useEffect(() => {
+    if (phase !== PHASE.INTERVIEW) return;
+
+    const onVisibilityChange = () => {
+      if (!document.hidden) return;
+      const warning = {
+        type: "tab-switch",
+        time: new Date().toLocaleTimeString(),
+      };
+      setWarnings((prev) => [...prev, warning]);
+      setShowWarning(true);
+      setTimeout(() => setShowWarning(false), 2200);
+    };
+
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullscreen(false);
+        const warning = {
+          type: "fullscreen-exit",
+          time: new Date().toLocaleTimeString(),
+        };
+        setWarnings((prev) => [...prev, warning]);
+        setShowWarning(true);
+        setTimeout(() => setShowWarning(false), 2200);
+      } else {
+        setIsFullscreen(true);
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+    };
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== PHASE.INTERVIEW || !isRecording) return;
+    timerRef.current = setInterval(() => {
+      setTimer((prev) => {
+        if (prev >= timePerQuestion) {
+          handleStopAnswerRef.current?.();
+          return 0;
+        }
+        return prev + 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [phase, isRecording, timePerQuestion]);
+
+  const startCamera = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 320, height: 240, facingMode: "user" },
+        audio: false,
+      });
+      setCameraStream(stream);
+      setCameraError("");
+    } catch {
+      setCameraError(
+        "Camera access denied. Interview continues, but proctoring visibility is reduced.",
+      );
+    }
+  }, []);
+
+  const speakQuestion = useCallback(
+    (text) => {
+      if (!ttsEnabled || !text || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      utterance.pitch = 1;
+      utterance.lang = "en-US";
+      window.speechSynthesis.speak(utterance);
+    },
+    [ttsEnabled],
+  );
+
+  useEffect(() => {
+    if (phase === PHASE.INTERVIEW && currentQuestion?.question) {
+      speakQuestion(currentQuestion.question);
+    }
+  }, [phase, currentQuestion, speakQuestion]);
+
+  const startSpeechRecognition = useCallback(() => {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError("Speech recognition is not supported in this browser.");
+      return false;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      let final = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const value = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          final += `${value} `;
+        } else {
+          interim += value;
+        }
+      }
+
+      if (final) {
+        setAnswerText((prev) => `${prev} ${final}`.trim());
+      }
+      setInterimTranscript(interim);
+    };
+
+    recognition.onend = () => {
+      if (isRecordingRef.current && recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch {
+          // no-op
+        }
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error !== "aborted" && event.error !== "no-speech") {
+        console.warn("speech recognition error", event.error);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    return true;
+  }, []);
 
   const handleStart = async () => {
     if (!topic.trim()) return;
     setLoading(true);
-    try {
-      const res = await startInterview({ topic: topic.trim(), difficulty });
-      setCurrentQuestion(res.data.currentQuestion);
-      setQuestionNumber(res.data.questionNumber);
-      setStarted(true);
-    } catch (err) {
-      console.error("Interview start failed:", err);
-    }
-    setLoading(false);
-  };
+    setError("");
 
-  const handleAnswer = async () => {
-    if (!selectedAnswer) return;
-    setLoading(true);
     try {
-      const res = await submitInterviewAnswer({
-        topic,
-        previousQuestion: currentQuestion.question,
-        userAnswer: selectedAnswer,
-        questionNumber,
-        options: currentQuestion.options,
-        correctAnswer: currentQuestion.correctAnswer,
+      const res = await startInterview({
+        topic: topic.trim(),
+        difficulty,
       });
 
-      setFeedback(res.data);
+      setSessionId(res.data.sessionId || "");
+      setCurrentQuestion(res.data.currentQuestion);
+      setQuestionNumber(res.data.questionNumber || 1);
+      setHistory([]);
+      setReviewData(null);
+      setPendingNextQuestion(null);
+      setWarnings([]);
+      setAnswerText("");
+      setInterimTranscript("");
 
-      // Add to history
-      setHistory((prev) => [
-        ...prev,
-        {
-          question: currentQuestion,
-          userAnswer: selectedAnswer,
-          evaluation: res.data.evaluation,
-          feedback: res.data.feedback,
-        },
-      ]);
+      await startCamera();
+      try {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      } catch {
+        // no-op
+      }
+
+      setPhase(PHASE.INTERVIEW);
     } catch (err) {
-      console.error("Interview answer failed:", err);
+      setError(err.response?.data?.error || "Failed to start interview.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
+
+  const handleStartAnswer = () => {
+    setInterimTranscript("");
+    setTimer(0);
+    setIsRecording(true);
+    isRecordingRef.current = true;
+    startSpeechRecognition();
+  };
+
+  const handleStopAnswer = async () => {
+    const finalAnswer = `${answerText} ${interimTranscript}`.trim();
+    if (!finalAnswer) {
+      setError("Please provide an answer before submitting.");
+      return;
+    }
+
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setInterimTranscript("");
+
+    setLoading(true);
+    setError("");
+    try {
+      const res = await submitInterviewAnswer({
+        sessionId,
+        topic,
+        difficulty,
+        previousQuestion: currentQuestion?.question,
+        userAnswer: finalAnswer,
+        questionNumber,
+      });
+
+      const item = {
+        questionNumber,
+        question: currentQuestion?.question,
+        userAnswer: finalAnswer,
+        evaluation: res.data.evaluation,
+        feedback: res.data.feedback,
+        guidance: res.data.guidance || [],
+        referenceAnswer: res.data.referenceAnswer || "",
+        semanticSimilarity: res.data.semanticSimilarity || 0,
+        matchedKeyTerms: res.data.matchedKeyTerms || [],
+        missingKeyTerms: res.data.missingKeyTerms || [],
+        duration: timer,
+      };
+
+      setHistory((prev) => [...prev, item]);
+      setReviewData(item);
+      setPendingNextQuestion(res.data.followUpQuestion || null);
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to evaluate answer.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  handleStopAnswerRef.current = handleStopAnswer;
 
   const handleNextQuestion = () => {
-    if (feedback?.followUpQuestion) {
-      setCurrentQuestion(feedback.followUpQuestion);
-      setQuestionNumber(feedback.questionNumber);
+    if (questionNumber >= maxQuestions || !pendingNextQuestion) {
+      setPhase(PHASE.RESULTS);
+      return;
     }
-    setSelectedAnswer(null);
-    setFeedback(null);
+
+    setCurrentQuestion(pendingNextQuestion);
+    setQuestionNumber((prev) => prev + 1);
+    setAnswerText("");
+    setInterimTranscript("");
+    setTimer(0);
+    setReviewData(null);
+    setPendingNextQuestion(null);
   };
 
-  const getEvalColor = (eval_) => {
-    if (eval_ === "correct") return "var(--success)";
-    if (eval_ === "partially_correct") return "var(--warning)";
-    return "var(--error)";
+  const handleEndInterview = async () => {
+    cleanupMedia();
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        // no-op
+      }
+    }
+    setPhase(PHASE.RESULTS);
   };
 
-  const getEvalEmoji = (eval_) => {
-    if (eval_ === "correct") return "✅";
-    if (eval_ === "partially_correct") return "🟡";
-    return "❌";
+  const avg = (field) => {
+    if (!history.length) return 0;
+    return Math.round(
+      history.reduce((sum, h) => sum + (h.evaluation?.[field] || 0), 0) /
+        history.length,
+    );
   };
 
-  // ─── SETUP ───
-  if (!started) {
+  const formatTime = (sec) => {
+    const min = Math.floor(sec / 60);
+    const rem = sec % 60;
+    return `${min}:${rem.toString().padStart(2, "0")}`;
+  };
+
+  const progress = (questionNumber / Math.max(maxQuestions, 1)) * 100;
+  const timerPercent = (timer / Math.max(timePerQuestion, 1)) * 100;
+
+  if (phase === PHASE.SETUP) {
     return (
       <div className="interview-page has-navbar">
         <div className="container-sm">
@@ -96,56 +397,46 @@ export default function InterviewMode() {
 
           <div className="card interview-setup animate-fade-in-up">
             <div className="setup-header">
+              <span className="badge badge-primary">Live topic interview</span>
               <span className="setup-icon">
                 <MessageSquare size={30} />
               </span>
               <h2>Interview Simulation</h2>
-              <p>AI-powered mock interview with adaptive follow-up questions</p>
+              <p>
+                Topic + level based interview in live mode, with camera,
+                speech-to-text, answer comparison, and AI guidance after each
+                question.
+              </p>
             </div>
 
-            <div className="interview-flow" style={{ marginBottom: "1rem" }}>
+            <div className="interview-shortcuts">
               <button
-                className="btn btn-ghost btn-sm"
+                className="interview-shortcut-card"
                 onClick={() => navigate("/resume-interview")}
               >
-                <Mic size={14} style={{ marginRight: 6 }} /> Resume Interview
+                <Mic size={16} />
+                <div>
+                  <strong>Resume interview</strong>
+                  <span>Practice from your uploaded resume</span>
+                </div>
               </button>
               <button
-                className="btn btn-ghost btn-sm"
+                className="interview-shortcut-card"
                 onClick={() => navigate("/document-interview")}
               >
-                <FileText size={14} style={{ marginRight: 6 }} /> Document
-                Interview
+                <FileText size={16} />
+                <div>
+                  <strong>Document interview</strong>
+                  <span>Practice from uploaded Q&A files</span>
+                </div>
               </button>
-            </div>
-
-            <div className="interview-flow">
-              <div className="flow-step">
-                <span className="flow-num">1</span>
-                <span>AI asks a question</span>
-              </div>
-              <div className="flow-arrow">→</div>
-              <div className="flow-step">
-                <span className="flow-num">2</span>
-                <span>You answer</span>
-              </div>
-              <div className="flow-arrow">→</div>
-              <div className="flow-step">
-                <span className="flow-num">3</span>
-                <span>AI evaluates & explains</span>
-              </div>
-              <div className="flow-arrow">→</div>
-              <div className="flow-step">
-                <span className="flow-num">4</span>
-                <span>Follow-up question</span>
-              </div>
             </div>
 
             <div className="input-group">
               <label>Topic</label>
               <input
                 className="input"
-                placeholder="e.g. DBMS, System Design, OOP"
+                placeholder="e.g. OOP, DBMS, System Design"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
               />
@@ -158,11 +449,40 @@ export default function InterviewMode() {
                 value={difficulty}
                 onChange={(e) => setDifficulty(e.target.value)}
               >
-                <option value="easy">Easy - Definitions</option>
-                <option value="medium">Medium - Conceptual</option>
-                <option value="hard">Hard - Scenario-based</option>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
               </select>
             </div>
+
+            <div className="interview-config-grid">
+              <div className="input-group">
+                <label>Questions</label>
+                <select
+                  className="input"
+                  value={maxQuestions}
+                  onChange={(e) => setMaxQuestions(Number(e.target.value))}
+                >
+                  <option value={4}>4</option>
+                  <option value={6}>6</option>
+                  <option value={8}>8</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Time / question</label>
+                <select
+                  className="input"
+                  value={timePerQuestion}
+                  onChange={(e) => setTimePerQuestion(Number(e.target.value))}
+                >
+                  <option value={90}>1.5 min</option>
+                  <option value={120}>2 min</option>
+                  <option value={180}>3 min</option>
+                </select>
+              </div>
+            </div>
+
+            {error && <div className="ri-error">{error}</div>}
 
             <button
               className="btn btn-primary btn-lg btn-block"
@@ -171,11 +491,11 @@ export default function InterviewMode() {
             >
               {loading ? (
                 <>
-                  <span className="spinner" style={{ width: 18, height: 18 }} />{" "}
+                  <span className="spinner" style={{ width: 18, height: 18 }} />
                   Starting...
                 </>
               ) : (
-                "Start Interview →"
+                "Start Live Interview →"
               )}
             </button>
           </div>
@@ -184,144 +504,320 @@ export default function InterviewMode() {
     );
   }
 
-  // ─── INTERVIEW SESSION ───
+  if (phase === PHASE.RESULTS) {
+    return (
+      <div className="interview-page has-navbar">
+        <div className="container-sm">
+          <div className="card animate-fade-in-up">
+            <h2 style={{ marginBottom: 10 }}>Interview Summary</h2>
+            <p style={{ marginBottom: 16 }}>
+              Topic: <strong>{topic}</strong> · Difficulty:{" "}
+              <strong>{difficulty}</strong>
+            </p>
+
+            <div className="di-result-grid" style={{ marginBottom: 16 }}>
+              <div className="di-mini-score">
+                Overall
+                <strong>{avg("score")}</strong>
+              </div>
+              <div className="di-mini-score">
+                Relevance
+                <strong>{avg("relevance")}</strong>
+              </div>
+              <div className="di-mini-score">
+                Depth
+                <strong>{avg("depth")}</strong>
+              </div>
+              <div className="di-mini-score">
+                Communication
+                <strong>{avg("communication")}</strong>
+              </div>
+            </div>
+
+            <div className="interview-history">
+              {history.map((item, idx) => (
+                <div key={idx} className="history-item card animate-fade-in-up">
+                  <div className="history-q">
+                    <span className="history-label">
+                      Q{item.questionNumber}:
+                    </span>
+                    <span>{item.question}</span>
+                  </div>
+                  <div className="history-a">
+                    <span className="history-label">Your answer:</span>
+                    <span>{item.userAnswer}</span>
+                  </div>
+                  <div className="di-inline-actions" style={{ marginTop: 8 }}>
+                    <span className="di-ref-chip">
+                      Semantic: {item.semanticSimilarity}%
+                    </span>
+                    <span className="di-ref-chip">
+                      Matched: {item.matchedKeyTerms?.join(", ") || "-"}
+                    </span>
+                  </div>
+                  <p className="history-feedback" style={{ marginTop: 8 }}>
+                    {item.feedback}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="ri-actions" style={{ marginTop: 12 }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setPhase(PHASE.SETUP);
+                  setSessionId("");
+                  setCurrentQuestion(null);
+                  setQuestionNumber(1);
+                  setHistory([]);
+                  setWarnings([]);
+                  setError("");
+                }}
+              >
+                New Interview
+              </button>
+              <button className="btn btn-outline" onClick={() => navigate("/")}>
+                ← Home
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="interview-page has-navbar">
-      <div className="container-sm">
-        <div className="interview-header animate-fade-in">
-          <div className="interview-meta">
-            <span className="badge badge-primary">{topic}</span>
-            <span className="badge badge-warning">Q{questionNumber}</span>
+      {showWarning && (
+        <div className="ri-warning-overlay animate-fade-in">
+          <div className="ri-warning-box">
+            <span className="ri-warning-icon">
+              <AlertTriangle size={30} />
+            </span>
+            <h3>Interview Integrity Warning</h3>
+            <p>Tab switches and fullscreen exits are detected.</p>
           </div>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              setStarted(false);
-              setHistory([]);
-              setFeedback(null);
-            }}
-          >
-            End Interview
-          </button>
+        </div>
+      )}
+
+      <div className="container-sm">
+        <div className="ri-topbar">
+          <div className="ri-topbar-left">
+            <span className="ri-q-counter">
+              Q{questionNumber}/{maxQuestions}
+            </span>
+            <div className="ri-progress-bar">
+              <div
+                className="ri-progress-fill"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+          <div className="ri-topbar-right">
+            {warnings.length > 0 && (
+              <span className="ri-cheat-badge">
+                ⚠ {warnings.length} warnings
+              </span>
+            )}
+            {!isFullscreen && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() =>
+                  document.documentElement.requestFullscreen().catch(() => {})
+                }
+              >
+                ⛶ Fullscreen
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* History */}
-        {history.length > 0 && (
-          <div className="interview-history">
-            {history.map((h, i) => (
-              <div key={i} className="history-item card animate-fade-in-up">
-                <div className="history-q">
-                  <span className="history-label">Q{i + 1}:</span>
-                  <span>{h.question.question}</span>
-                </div>
-                <div className="history-a">
-                  <span className="history-label">Your answer:</span>
-                  <span>{h.userAnswer}</span>
-                </div>
-                <div
-                  className="history-eval"
-                  style={{ color: getEvalColor(h.evaluation) }}
-                >
-                  {getEvalEmoji(h.evaluation)} {h.evaluation?.replace("_", " ")}
-                </div>
-                <p className="history-feedback">{h.feedback}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Current Question */}
-        <div
-          className="card question-card animate-slide-right"
-          key={questionNumber}
-        >
+        <div className="card question-card animate-slide-right">
           <div className="question-number">Q{questionNumber}</div>
           <h3 className="question-text">{currentQuestion?.question}</h3>
+          <p className="history-feedback" style={{ marginBottom: 10 }}>
+            Tip:{" "}
+            {currentQuestion?.interviewTip ||
+              "Keep your answer structured and concise."}
+          </p>
 
-          {currentQuestion?.options && (
-            <div className="options-list">
-              {currentQuestion.options.map((opt, i) => {
-                const letter = opt.charAt(0);
-                return (
-                  <button
-                    key={i}
-                    className={`option-btn ${selectedAnswer === letter ? "selected" : ""}`}
-                    onClick={() => !feedback && setSelectedAnswer(letter)}
-                    disabled={!!feedback}
-                  >
-                    <span className="option-letter">{letter}</span>
-                    <span className="option-text">
-                      {opt.substring(2).trim()}
-                    </span>
-                  </button>
-                );
-              })}
+          <div className="ri-media-area">
+            <div className="ri-camera-box">
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                className="ri-camera-feed"
+              />
+              {cameraError && (
+                <div className="ri-camera-error">📹 {cameraError}</div>
+              )}
+              <div className="ri-camera-label">
+                <Camera size={14} style={{ marginRight: 6 }} />
+                {isRecording ? "Recording" : "Camera"}
+              </div>
+            </div>
+
+            <div className="ri-timer-box">
+              <svg className="ri-timer-ring" viewBox="0 0 100 100">
+                <circle className="ri-timer-bg" cx="50" cy="50" r="45" />
+                <circle
+                  className={`ri-timer-progress ${timerPercent > 75 ? "danger" : ""}`}
+                  cx="50"
+                  cy="50"
+                  r="45"
+                  strokeDasharray={`${2 * Math.PI * 45}`}
+                  strokeDashoffset={`${2 * Math.PI * 45 * (1 - timerPercent / 100)}`}
+                />
+              </svg>
+              <div
+                className={`ri-timer-text ${timerPercent > 75 ? "danger" : ""}`}
+              >
+                {formatTime(timer)}
+              </div>
+              <div className="ri-timer-label">
+                / {formatTime(timePerQuestion)}
+              </div>
+            </div>
+          </div>
+
+          <div className="ri-transcript-area card">
+            <div className="ri-transcript-header">
+              <span>Live Answer</span>
+              <div className="di-inline-actions">
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => speakQuestion(currentQuestion?.question || "")}
+                >
+                  <Volume2 size={14} /> Replay
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setTtsEnabled((prev) => {
+                      const next = !prev;
+                      if (!next) window.speechSynthesis?.cancel();
+                      return next;
+                    });
+                  }}
+                >
+                  {ttsEnabled ? <VolumeOff size={14} /> : <Volume2 size={14} />}{" "}
+                  {ttsEnabled ? "Mute TTS" : "Enable TTS"}
+                </button>
+              </div>
+            </div>
+
+            <textarea
+              className="input interview-answer-input"
+              rows={6}
+              placeholder="Speak or type your answer here..."
+              value={`${answerText}${interimTranscript ? ` ${interimTranscript}` : ""}`.trim()}
+              onChange={(e) => {
+                setAnswerText(e.target.value);
+                setInterimTranscript("");
+              }}
+              disabled={Boolean(reviewData)}
+            />
+          </div>
+
+          {!reviewData && (
+            <div className="ri-actions">
+              {!isRecording ? (
+                <button className="btn btn-primary" onClick={handleStartAnswer}>
+                  🎤 Start Answering
+                </button>
+              ) : (
+                <button className="btn btn-success" onClick={handleStopAnswer}>
+                  ✅ Submit Answer
+                </button>
+              )}
+              <button className="btn btn-outline" onClick={handleEndInterview}>
+                End Interview
+              </button>
             </div>
           )}
 
-          {/* Submit answer */}
-          {!feedback && (
-            <button
-              className="btn btn-primary btn-block"
-              onClick={handleAnswer}
-              disabled={!selectedAnswer || loading}
-            >
-              {loading ? (
-                <>
-                  <span className="spinner" style={{ width: 18, height: 18 }} />{" "}
-                  Evaluating...
-                </>
-              ) : (
-                "Submit Answer"
-              )}
-            </button>
+          {loading && (
+            <div className="loading-screen" style={{ minHeight: 120 }}>
+              <div className="spinner" />
+              <h3>Evaluating your response...</h3>
+            </div>
           )}
 
-          {/* Feedback */}
-          {feedback && (
+          {error && <div className="ri-error">{error}</div>}
+
+          {reviewData && (
             <div className="feedback-section animate-fade-in-up">
               <div
                 className="result-banner"
                 style={{
-                  background: `${getEvalColor(feedback.evaluation)}15`,
-                  color: getEvalColor(feedback.evaluation),
+                  background: "rgba(31,169,113,0.12)",
+                  color: "var(--success)",
                 }}
               >
-                <span className="result-emoji">
-                  {getEvalEmoji(feedback.evaluation)}
-                </span>
+                <CheckCircle2 size={16} />
                 <span className="result-text">
-                  {feedback.evaluation?.replace("_", " ")}
+                  Score: {reviewData.evaluation?.score || 0}/100
+                </span>
+              </div>
+
+              <div className="di-result-grid" style={{ marginBottom: 12 }}>
+                <div className="di-mini-score">
+                  Relevance
+                  <strong>{reviewData.evaluation?.relevance || 0}</strong>
+                </div>
+                <div className="di-mini-score">
+                  Depth<strong>{reviewData.evaluation?.depth || 0}</strong>
+                </div>
+                <div className="di-mini-score">
+                  Communication
+                  <strong>{reviewData.evaluation?.communication || 0}</strong>
+                </div>
+                <div className="di-mini-score">
+                  Semantic<strong>{reviewData.semanticSimilarity || 0}</strong>
+                </div>
+              </div>
+
+              <div className="explanation-box">
+                <div className="exp-header">AI Feedback</div>
+                <p>{reviewData.feedback}</p>
+              </div>
+
+              <div className="explanation-box">
+                <div className="exp-header">Reference Answer</div>
+                <p>
+                  {reviewData.referenceAnswer ||
+                    "Reference answer unavailable."}
+                </p>
+              </div>
+
+              <div className="di-inline-actions" style={{ marginBottom: 8 }}>
+                <span className="di-ref-chip provided">
+                  Matched: {reviewData.matchedKeyTerms?.join(", ") || "-"}
+                </span>
+                <span className="di-ref-chip generated">
+                  Missing: {reviewData.missingKeyTerms?.join(", ") || "-"}
                 </span>
               </div>
 
               <div className="explanation-box">
-                <div className="explanation-section">
-                  <div className="exp-header">AI Feedback</div>
-                  <p>{feedback.feedback}</p>
-                </div>
+                <div className="exp-header">Guidance for next question</div>
+                <ul className="interview-guidance-list">
+                  {(reviewData.guidance || []).map((g, idx) => (
+                    <li key={idx}>{g}</li>
+                  ))}
+                </ul>
               </div>
-
-              {currentQuestion?.explanation && (
-                <div className="explanation-box">
-                  <div className="explanation-section">
-                    <div className="exp-header">📖 Explanation</div>
-                    <p>{currentQuestion.explanation}</p>
-                  </div>
-                  {currentQuestion?.interviewTip && (
-                    <div className="explanation-section">
-                      <div className="exp-header">🎯 Interview Tip</div>
-                      <p>{currentQuestion.interviewTip}</p>
-                    </div>
-                  )}
-                </div>
-              )}
 
               <button
                 className="btn btn-primary btn-block"
                 onClick={handleNextQuestion}
               >
-                Next Follow-up Question →
+                {questionNumber >= maxQuestions
+                  ? "Finish Interview →"
+                  : "Next Question →"}
               </button>
             </div>
           )}

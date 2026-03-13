@@ -191,3 +191,84 @@
     flex-direction: column;
   }
 }
+
+/* 2026 redesign overrides */
+
+.setup-page {
+  padding: 2rem 0 3rem;
+}
+
+.setup-card {
+  padding: 2rem;
+  border-radius: 30px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9),
+    rgba(247, 249, 255, 0.76)
+  );
+}
+
+html[data-theme="dark"] .setup-card {
+  background: linear-gradient(
+    180deg,
+    rgba(19, 27, 44, 0.92),
+    rgba(15, 21, 34, 0.82)
+  );
+}
+
+.setup-header {
+  margin-bottom: 2rem;
+}
+
+.setup-icon {
+  width: 74px;
+  height: 74px;
+  border-radius: 22px;
+  background: linear-gradient(
+    145deg,
+    rgba(91, 108, 255, 0.14),
+    rgba(95, 208, 200, 0.12)
+  );
+}
+
+.setup-header h2 {
+  font-size: 2rem;
+}
+
+.setup-header p {
+  max-width: 40ch;
+  margin: 0 auto;
+}
+
+.subtopics-list,
+.difficulty-btn,
+.num-btn {
+  border-radius: 18px;
+}
+
+.subtopics-list {
+  padding: 1rem;
+}
+
+.difficulty-selector,
+.num-selector {
+  gap: 0.85rem;
+}
+
+.difficulty-btn {
+  padding: 1.2rem 0.85rem;
+}
+
+.difficulty-btn:hover,
+.num-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+.num-btn {
+  min-height: 58px;
+}
+
+.start-btn {
+  margin-top: 1rem;
+}
