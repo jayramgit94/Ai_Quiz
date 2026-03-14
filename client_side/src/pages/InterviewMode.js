@@ -459,13 +459,16 @@ export default function InterviewMode() {
     setPhase(PHASE.RESULTS);
   };
 
-  const avg = (field) => {
-    if (!history.length) return 0;
-    return Math.round(
-      history.reduce((sum, h) => sum + (h.evaluation?.[field] || 0), 0) /
-        history.length,
-    );
-  };
+  const avg = useCallback(
+    (field) => {
+      if (!history.length) return 0;
+      return Math.round(
+        history.reduce((sum, h) => sum + (h.evaluation?.[field] || 0), 0) /
+          history.length,
+      );
+    },
+    [history],
+  );
 
   const formatTime = (sec) => {
     const min = Math.floor(sec / 60);
@@ -521,7 +524,7 @@ export default function InterviewMode() {
     };
 
     syncToProfile();
-  }, [phase, user, history, sessionId, topic, difficulty, updateUser]);
+  }, [phase, user, history, sessionId, topic, difficulty, updateUser, avg]);
 
   if (phase === PHASE.SETUP) {
     return (
