@@ -1,6 +1,7 @@
 const express = require("express");
 const LeaderboardEntry = require("../models/LeaderboardEntry");
 const DailyChallenge = require("../models/DailyChallenge");
+const User = require("../models/User");
 const { generateQuizQuestions } = require("../services/grokService");
 const { validateQuestionSet } = require("../utils/validation");
 const { authMiddleware } = require("./auth");
@@ -136,9 +137,9 @@ router.get("/topic/:topic", async (req, res) => {
   }
 });
 
-// ─── GET /api/leaderboard/progress/:userName ───
+// ─── GET /api/leaderboard/progress/by-name/:userName ───
 // Get user's learning progress / dashboard data
-router.get("/progress/:userName", async (req, res) => {
+router.get("/progress/by-name/:userName", async (req, res) => {
   try {
     const userName = req.params.userName;
 
@@ -202,6 +203,85 @@ router.get("/progress/:userName", async (req, res) => {
     res.json({
       overallStats: { totalQuizzes: 0, totalCorrect: 0, averageAccuracy: 0 },
       topicHistory: [],
+    });
+  }
+});
+
+// ─── GET /api/leaderboard/progress/me ───
+// Authenticated learning cockpit data from current user profile
+router.get("/progress/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId)
+      .select(
+        "displayName totalQuizzes totalCorrect totalQuestions topicStats accuracyHistory",
+      )
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const topicHistoryFromProfile = (user.topicStats || []).map((t) => ({
+      topic: t.topic || "Unknown",
+      quizCount: Number(t.quizCount || 0),
+      totalCorrect: Number(t.totalCorrect || 0),
+      totalQuestions: Number(t.totalQuestions || 0),
+      lastDifficulty: "mixed",
+      lastPlayed: t.lastPlayed || null,
+    }));
+
+    // Enrich with latest difficulty from leaderboard entries when available.
+    let topicHistory = topicHistoryFromProfile;
+    if (user.displayName) {
+      const latestEntries = await LeaderboardEntry.find({
+        userName: {
+          $regex: new RegExp(`^${escapeRegex(user.displayName)}$`, "i"),
+        },
+      })
+        .sort({ date: -1 })
+        .limit(300)
+        .lean();
+
+      if (latestEntries.length) {
+        const difficultyByTopic = new Map();
+        for (const entry of latestEntries) {
+          const key = String(entry.topic || "Unknown");
+          if (!difficultyByTopic.has(key)) {
+            difficultyByTopic.set(key, entry.difficulty || "mixed");
+          }
+        }
+
+        topicHistory = topicHistory.map((t) => ({
+          ...t,
+          lastDifficulty: difficultyByTopic.get(t.topic) || t.lastDifficulty,
+        }));
+      }
+    }
+
+    topicHistory.sort((a, b) => b.quizCount - a.quizCount);
+
+    const totalQuizzes = Number(user.totalQuizzes || 0);
+    const totalCorrect = Number(user.totalCorrect || 0);
+    const totalQuestions = Number(user.totalQuestions || 0);
+    const averageAccuracy = totalQuestions
+      ? Math.round((totalCorrect / totalQuestions) * 100)
+      : 0;
+
+    return res.json({
+      overallStats: {
+        totalQuizzes,
+        totalCorrect,
+        averageAccuracy,
+      },
+      topicHistory,
+      accuracyHistory: user.accuracyHistory || [],
+    });
+  } catch (err) {
+    console.error("My progress error:", err.message);
+    return res.status(500).json({
+      overallStats: { totalQuizzes: 0, totalCorrect: 0, averageAccuracy: 0 },
+      topicHistory: [],
+      accuracyHistory: [],
     });
   }
 });

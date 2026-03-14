@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { getHeroReviews, publishReview } from "../services/api";
+import { getHeroReviews, getMyProgress, publishReview } from "../services/api";
 import "./LandingPage.css";
 
 const features = [
@@ -137,12 +137,24 @@ export default function LandingPage() {
   const [note, setNote] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [liveReviews, setLiveReviews] = useState([]);
+  const [myProgress, setMyProgress] = useState(null);
 
   useEffect(() => {
     getHeroReviews()
       .then((res) => setLiveReviews(res.data.reviews || []))
       .catch(() => setLiveReviews([]));
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setMyProgress(null);
+      return;
+    }
+
+    getMyProgress()
+      .then((res) => setMyProgress(res.data || null))
+      .catch(() => setMyProgress(null));
+  }, [user?.id]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -163,6 +175,47 @@ export default function LandingPage() {
     }));
     return [...dummyReviews, ...mappedLive].slice(0, 8);
   }, [liveReviews]);
+
+  const ribbonLoopReviews = useMemo(() => {
+    if (!ribbonReviews.length) return [];
+    return [...ribbonReviews, ...ribbonReviews];
+  }, [ribbonReviews]);
+
+  const cockpitData = useMemo(() => {
+    const topics = (myProgress?.topicHistory || []).slice(0, 3).map((t) => {
+      const accuracy = t.totalQuestions
+        ? Math.round((t.totalCorrect / t.totalQuestions) * 100)
+        : 0;
+      return {
+        name: t.topic,
+        progress: Math.max(8, Math.min(100, accuracy)),
+      };
+    });
+
+    const fallbackTracks = [
+      { name: "System Design", progress: 78 },
+      { name: "Behavioral Storytelling", progress: 64 },
+      { name: "Core CS Fundamentals", progress: 86 },
+    ];
+
+    const readiness = Number(myProgress?.overallStats?.averageAccuracy || 84);
+
+    return {
+      readiness,
+      onTrack: readiness >= 70,
+      tracks: topics.length ? topics : fallbackTracks,
+      statLeft: user
+        ? String(myProgress?.overallStats?.totalQuizzes || 0)
+        : "4",
+      statLeftLabel: user ? "Quizzes completed" : "Practice paths",
+      statMid: user ? String(myProgress?.topicHistory?.length || 0) : "AI",
+      statMidLabel: user ? "Topics covered" : "Generated coaching",
+      statRight: user
+        ? String(myProgress?.overallStats?.totalCorrect || 0)
+        : "∞",
+      statRightLabel: user ? "Correct answers" : "Question variety",
+    };
+  }, [myProgress, user]);
 
   const openReviewModal = () => {
     if (!user) {
@@ -284,18 +337,18 @@ export default function LandingPage() {
             </div>
             <div className="hero-stats">
               <div className="stat">
-                <span className="stat-value">4</span>
-                <span className="stat-label">Practice paths</span>
+                <span className="stat-value">{cockpitData.statLeft}</span>
+                <span className="stat-label">{cockpitData.statLeftLabel}</span>
               </div>
               <div className="stat-divider" />
               <div className="stat">
-                <span className="stat-value">AI</span>
-                <span className="stat-label">Generated coaching</span>
+                <span className="stat-value">{cockpitData.statMid}</span>
+                <span className="stat-label">{cockpitData.statMidLabel}</span>
               </div>
               <div className="stat-divider" />
               <div className="stat">
-                <span className="stat-value">∞</span>
-                <span className="stat-label">Question variety</span>
+                <span className="stat-value">{cockpitData.statRight}</span>
+                <span className="stat-label">{cockpitData.statRightLabel}</span>
               </div>
             </div>
           </div>
@@ -312,33 +365,30 @@ export default function LandingPage() {
             <div className="hero-preview-score">
               <div>
                 <span className="hero-preview-kicker">Readiness score</span>
-                <strong>84 / 100</strong>
+                <strong>{cockpitData.readiness} / 100</strong>
               </div>
-              <span className="badge badge-success">On track</span>
+              <span
+                className={`badge ${cockpitData.onTrack ? "badge-success" : "badge-warning"}`}
+              >
+                {cockpitData.onTrack ? "On track" : "Needs focus"}
+              </span>
             </div>
             <div className="hero-preview-panel">
               <div className="hero-preview-head">
                 <span>Upcoming focus</span>
                 <span>Today</span>
               </div>
-              <div className="hero-preview-track">
-                <span>System Design</span>
-                <div className="progress-bar">
-                  <div className="progress-bar-fill" style={{ width: "78%" }} />
+              {cockpitData.tracks.map((track) => (
+                <div className="hero-preview-track" key={track.name}>
+                  <span>{track.name}</span>
+                  <div className="progress-bar">
+                    <div
+                      className="progress-bar-fill"
+                      style={{ width: `${track.progress}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="hero-preview-track">
-                <span>Behavioral Storytelling</span>
-                <div className="progress-bar">
-                  <div className="progress-bar-fill" style={{ width: "64%" }} />
-                </div>
-              </div>
-              <div className="hero-preview-track">
-                <span>Core CS Fundamentals</span>
-                <div className="progress-bar">
-                  <div className="progress-bar-fill" style={{ width: "86%" }} />
-                </div>
-              </div>
+              ))}
             </div>
             <div className="hero-preview-grid">
               <div className="hero-preview-card">
@@ -392,21 +442,43 @@ export default function LandingPage() {
             Add Review
           </button>
         </div>
-        <div className="review-ribbon-track">
-          {ribbonReviews.map((item, idx) => (
-            <article
-              className="review-ribbon-card"
-              key={`${item.displayName}-${idx}`}
-            >
-              <div className="review-ribbon-top">
-                <strong>{item.displayName}</strong>
-                <span>
-                  {"★".repeat(Math.max(1, Math.min(5, item.rating || 5)))}
-                </span>
-              </div>
-              <p>{item.note}</p>
-            </article>
-          ))}
+        <div
+          className="review-ribbon-track"
+          role="region"
+          aria-label="User reviews ticker"
+        >
+          <div className="review-ribbon-lane">
+            {ribbonLoopReviews.map((item, idx) => (
+              <article
+                className="review-ribbon-card"
+                key={`lane-a-${item.displayName}-${idx}`}
+              >
+                <div className="review-ribbon-top">
+                  <strong>{item.displayName}</strong>
+                  <span>
+                    {"★".repeat(Math.max(1, Math.min(5, item.rating || 5)))}
+                  </span>
+                </div>
+                <p>{item.note}</p>
+              </article>
+            ))}
+          </div>
+          <div className="review-ribbon-lane" aria-hidden="true">
+            {ribbonLoopReviews.map((item, idx) => (
+              <article
+                className="review-ribbon-card"
+                key={`lane-b-${item.displayName}-${idx}`}
+              >
+                <div className="review-ribbon-top">
+                  <strong>{item.displayName}</strong>
+                  <span>
+                    {"★".repeat(Math.max(1, Math.min(5, item.rating || 5)))}
+                  </span>
+                </div>
+                <p>{item.note}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 

@@ -1,7 +1,7 @@
 import { BarChart2, Clock3, Shield, Star, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { adminLogin, getAdminOverview } from "../services/api";
+import { adminLogin, getAdminOverview, getAdminStatus } from "../services/api";
 import "./AdminPage.css";
 
 const ADMIN_TOKEN_KEY = "ai-quiz-admin-token";
@@ -21,6 +21,7 @@ export default function AdminPage() {
   );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [adminConfigured, setAdminConfigured] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [overview, setOverview] = useState(null);
@@ -50,6 +51,16 @@ export default function AdminPage() {
       loadOverview(token);
     }
   }, [token]);
+
+  useEffect(() => {
+    getAdminStatus()
+      .then((res) => {
+        setAdminConfigured(Boolean(res.data?.configured));
+      })
+      .catch(() => {
+        setAdminConfigured(true);
+      });
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -89,6 +100,12 @@ export default function AdminPage() {
             <p>
               Use admin credentials to view user progress and activity overview.
             </p>
+            {!adminConfigured && (
+              <div className="admin-error">
+                Admin is not configured on server. Set ADMIN_USERNAME and
+                ADMIN_PASSWORD in your backend environment.
+              </div>
+            )}
             <form onSubmit={handleLogin} className="admin-login-form">
               <div className="input-group">
                 <label>Username</label>
@@ -112,7 +129,10 @@ export default function AdminPage() {
                 />
               </div>
               {error && <div className="admin-error">{error}</div>}
-              <button className="btn btn-primary btn-block" disabled={loading}>
+              <button
+                className="btn btn-primary btn-block"
+                disabled={loading || !adminConfigured}
+              >
                 {loading ? "Signing in..." : "Open Admin Panel"}
               </button>
             </form>

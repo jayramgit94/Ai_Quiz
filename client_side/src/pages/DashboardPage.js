@@ -12,7 +12,12 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { clearUserData, getUserProgress } from "../services/api";
+import {
+  clearUserData,
+  getMe,
+  getMyProgress,
+  getUserProgress,
+} from "../services/api";
 import "./DashboardPage.css";
 
 export default function DashboardPage() {
@@ -20,27 +25,45 @@ export default function DashboardPage() {
   const location = useLocation();
   const { user, updateUser } = useAuth();
   const toast = useToast();
-  const userName = location.state?.userName || user?.displayName || "";
+  const userName = user?.displayName || location.state?.userName || "";
   const [progress, setProgress] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
   useEffect(() => {
-    if (userName) loadProgress(userName);
+    if (user) {
+      loadProgress();
+      const timer = setInterval(() => {
+        loadProgress(true);
+      }, 30000);
+      return () => clearInterval(timer);
+    }
+    if (userName) loadProgress(false, userName);
     // eslint-disable-next-line
-  }, [userName]);
+  }, [user?.id, userName]);
 
-  const loadProgress = async (name = userName) => {
-    if (!name.trim()) return;
-    setLoading(true);
+  const loadProgress = async (silent = false, fallbackName = userName) => {
+    if (!user && !String(fallbackName || "").trim()) return;
+    if (!silent) setLoading(true);
+
     try {
-      const res = await getUserProgress(name.trim());
-      setProgress(res.data);
+      let res;
+      if (user) {
+        const meRes = await getMe();
+        updateUser(meRes.data.user);
+        res = await getMyProgress();
+      } else {
+        res = await getUserProgress(String(fallbackName || "").trim());
+      }
+      setProgress(res.data || null);
       setSearched(true);
     } catch (err) {
       console.error("Load progress failed:", err);
+      if (!silent) {
+        toast.error("Failed to load latest learning data.");
+      }
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   const handleClearData = async () => {
@@ -146,7 +169,7 @@ export default function DashboardPage() {
           />
           <button
             className="btn btn-primary"
-            onClick={() => loadProgress(userName)}
+            onClick={() => loadProgress(false, userName)}
             disabled={loading || !userName}
           >
             {loading ? (

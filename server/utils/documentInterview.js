@@ -34,6 +34,51 @@ const STOP_WORDS = new Set([
   "these",
 ]);
 
+const QUESTION_STARTERS = new Set([
+  "what",
+  "why",
+  "how",
+  "when",
+  "where",
+  "who",
+  "which",
+  "can",
+  "could",
+  "would",
+  "should",
+  "is",
+  "are",
+  "do",
+  "did",
+  "does",
+  "have",
+  "has",
+  "tell",
+  "describe",
+  "explain",
+  "discuss",
+  "define",
+  "compare",
+  "differentiate",
+  "walk",
+  "share",
+  "give",
+  "introduce",
+  "list",
+]);
+
+const IMPLIED_INTERVIEW_QUESTION_PATTERNS = [
+  /^tell\s+me\s+about\s+yourself\b/i,
+  /^introduce\s+yourself\b/i,
+  /^walk\s+me\s+through\b/i,
+  /^describe\s+your\b/i,
+  /^explain\s+your\b/i,
+  /^share\s+(an?|your)\b/i,
+  /^give\s+(an?|your)\b/i,
+  /^what\s+are\s+your\b/i,
+  /^why\s+(do|did|are|is|would|should|can)\b/i,
+];
+
 function normalizeWhitespace(text) {
   return (text || "")
     .replace(/\r/g, "\n")
@@ -46,7 +91,10 @@ function normalizeWhitespace(text) {
 
 function stripQuestionPrefix(text) {
   return text
-    .replace(/^\s*(?:q(?:uestion)?\s*\d*[:.)\-]?|\d+[:.)\-])\s*/i, "")
+    .replace(
+      /^\s*(?:[-*•]\s*|\d+[.):-]\s*|q(?:uestion)?\s*\d*\s*[:.)\-]?\s*)/i,
+      "",
+    )
     .trim();
 }
 
@@ -55,15 +103,126 @@ function stripAnswerPrefix(text) {
 }
 
 function isQuestionLine(line) {
-  const value = (line || "").trim();
+  const value = stripQuestionPrefix(line || "");
   if (!value) return false;
 
-  if (/^\s*(?:q(?:uestion)?\s*\d*[:.)\-]|\d+[:.)\-])\s*.+/i.test(value)) {
+  if (/^\s*(?:q(?:uestion)?\s*\d*[:.)\-]|\d+[:.)\-])\s*.+/i.test(line)) {
     return true;
   }
 
-  // Fallback: treat sentence ending in ? as a question candidate.
-  return /\?$/.test(value) && value.length >= 10;
+  if (/\?$/.test(value) && value.length >= 8) return true;
+
+  const normalized = value.replace(/["'“”]/g, "").trim();
+  const firstWord = (normalized.match(/^([a-z]+)/i) || [])[1]?.toLowerCase();
+
+  const hasStarter = firstWord ? QUESTION_STARTERS.has(firstWord) : false;
+  const matchesInterviewPrompt = IMPLIED_INTERVIEW_QUESTION_PATTERNS.some(
+    (re) => re.test(normalized),
+  );
+
+  const isImplicitQuestionStarter = (() => {
+    if (!firstWord) return false;
+
+    // Imperative interview prompts (no '?' needed)
+    if (
+      [
+        "tell",
+        "describe",
+        "explain",
+        "discuss",
+        "define",
+        "compare",
+        "differentiate",
+        "walk",
+        "share",
+        "give",
+        "introduce",
+        "list",
+      ].includes(firstWord)
+    ) {
+      return true;
+    }
+
+    // Interrogative starters require question-like phrasing when no '?'
+    if (firstWord === "what")
+      return /^what\s+(is|are|was|were|do|does|did|can|could|would|should|has|have|why|when|where|which|who|your)\b/i.test(
+        normalized,
+      );
+    if (firstWord === "why")
+      return /^why\s+(is|are|do|does|did|can|could|would|should|has|have)\b/i.test(
+        normalized,
+      );
+    if (firstWord === "how")
+      return /^how\s+(do|does|did|can|could|would|should|is|are|has|have)\b/i.test(
+        normalized,
+      );
+    if (firstWord === "which")
+      return /^which\s+(is|are|one|option|approach|statement|of)\b/i.test(
+        normalized,
+      );
+    if (
+      [
+        "can",
+        "could",
+        "would",
+        "should",
+        "is",
+        "are",
+        "do",
+        "did",
+        "does",
+        "have",
+        "has",
+        "when",
+        "where",
+        "who",
+      ].includes(firstWord)
+    ) {
+      if (!/^[A-Z]/.test(value.trim())) return false;
+      return true;
+    }
+
+    return false;
+  })();
+
+  if (!hasStarter && !matchesInterviewPrompt) return false;
+
+  // Avoid classifying long declarative answer paragraphs as questions.
+  if (normalized.length > 220 && !/\?$/.test(normalized)) return false;
+
+  // Without explicit question mark/prefix, require stronger implicit signal.
+  if (
+    !/\?$/.test(normalized) &&
+    !matchesInterviewPrompt &&
+    !isImplicitQuestionStarter
+  ) {
+    return false;
+  }
+
+  // Keep only question-like single lines and short prompts.
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+  return wordCount >= 3 && wordCount <= 45;
+}
+
+function shouldContinueQuestionLine(currentQuestion, nextLine) {
+  const question = String(currentQuestion || "").trim();
+  const line = String(nextLine || "").trim();
+  if (!question || !line) return false;
+
+  const questionWords = question.split(/\s+/).filter(Boolean).length;
+  const firstWord = (line.match(/^([a-z]+)/i) || [])[1]?.toLowerCase() || "";
+
+  // If current prompt already looks complete, next line is likely answer text.
+  if (/[:?.!]$/.test(question)) return false;
+  if (questionWords >= 7) return false;
+
+  // Continue question only when next line also looks like a prompt fragment.
+  if (QUESTION_STARTERS.has(firstWord)) return true;
+  if (/^(and|or|with|without|about|regarding|including)\b/i.test(line)) {
+    return true;
+  }
+
+  return false;
 }
 
 function extractInlineQA(text) {
@@ -134,15 +293,17 @@ function parseQuestionAnswerDocument(rawText) {
     }
 
     if (!collectingAnswer) {
-      // Keep multiline questions together when parser split by lines.
-      if (currentQuestion.length < 220) {
+      // Keep multiline questions together only when next line still looks like question text.
+      if (
+        currentQuestion.length < 220 &&
+        shouldContinueQuestionLine(currentQuestion, line)
+      ) {
         currentQuestion = `${currentQuestion} ${line}`.trim();
+        continue;
       }
 
-      if (/\?$/.test(currentQuestion) && line.length > 20) {
-        collectingAnswer = true;
-        answerLines.push(line);
-      }
+      collectingAnswer = true;
+      answerLines.push(line);
       continue;
     }
 
@@ -172,6 +333,74 @@ function parseQuestionAnswerDocument(rawText) {
       index: idx,
       hasProvidedAnswer: Boolean(item.providedAnswer),
     }));
+}
+
+function normalizeQuestionKey(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9 ]/g, "")
+    .trim();
+}
+
+function normalizeExtractedPairs(pairs = []) {
+  return (Array.isArray(pairs) ? pairs : [])
+    .map((item) => ({
+      question: String(item?.question || "")
+        .replace(/\s+/g, " ")
+        .trim(),
+      providedAnswer: String(item?.providedAnswer || "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    }))
+    .filter((item) => item.question.length >= 6)
+    .map((item, index) => ({
+      ...item,
+      index,
+      hasProvidedAnswer: Boolean(item.providedAnswer),
+    }));
+}
+
+function mergeExtractedQuestionAnswers(rulePairs = [], aiPairs = []) {
+  const merged = new Map();
+
+  const apply = (list = [], source = "rule") => {
+    for (const item of normalizeExtractedPairs(list)) {
+      const key = normalizeQuestionKey(item.question);
+      if (!key) continue;
+
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, {
+          question: item.question,
+          providedAnswer: item.providedAnswer,
+          hasProvidedAnswer: Boolean(item.providedAnswer),
+          source,
+        });
+        continue;
+      }
+
+      // Prefer entries that contain an answer, then prefer longer/more complete question text.
+      if (!existing.hasProvidedAnswer && item.providedAnswer) {
+        existing.providedAnswer = item.providedAnswer;
+        existing.hasProvidedAnswer = true;
+      }
+
+      if ((item.question || "").length > (existing.question || "").length) {
+        existing.question = item.question;
+      }
+    }
+  };
+
+  apply(rulePairs, "rule");
+  apply(aiPairs, "ai");
+
+  return [...merged.values()].map((item, index) => ({
+    question: item.question,
+    providedAnswer: item.providedAnswer || "",
+    hasProvidedAnswer: Boolean(item.providedAnswer),
+    index,
+  }));
 }
 
 function tokenize(value) {
@@ -301,5 +530,7 @@ function compareAnswers(userAnswer, referenceAnswer) {
 
 module.exports = {
   parseQuestionAnswerDocument,
+  mergeExtractedQuestionAnswers,
+  normalizeExtractedPairs,
   compareAnswers,
 };

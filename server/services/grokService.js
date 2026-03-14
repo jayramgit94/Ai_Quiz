@@ -959,6 +959,61 @@ function parseJsonFromAi(raw) {
   }
 }
 
+async function extractQuestionAnswerPairsWithAI(rawText) {
+  const safeText = String(rawText || "").trim();
+  if (!safeText) return [];
+
+  const prompt = `You extract interview questions and their answers from text.
+
+Rules:
+1. Questions may exist without a question mark.
+2. Detect natural prompts like "tell me about yourself", "introduce yourself", "explain polymorphism", and "walk me through your project" as questions.
+3. Keep original question phrasing when possible.
+4. If no answer exists for a question, set providedAnswer to an empty string.
+5. Do not invent content.
+
+Return ONLY valid JSON:
+{
+  "pairs": [
+    {
+      "question": "question text",
+      "providedAnswer": "answer text or empty"
+    }
+  ]
+}
+
+TEXT:
+"""
+${safeText.slice(0, 20000)}
+"""`;
+
+  try {
+    const parsed = parseJsonFromAi(
+      await callGrok([{ role: "user", content: prompt }], 2200),
+    );
+
+    const pairs = Array.isArray(parsed?.pairs)
+      ? parsed.pairs
+      : Array.isArray(parsed)
+        ? parsed
+        : [];
+
+    return pairs
+      .map((item) => ({
+        question: String(item?.question || "")
+          .replace(/\s+/g, " ")
+          .trim(),
+        providedAnswer: String(item?.providedAnswer || "")
+          .replace(/\s+/g, " ")
+          .trim(),
+      }))
+      .filter((item) => item.question.length >= 6)
+      .slice(0, 40);
+  } catch {
+    return [];
+  }
+}
+
 async function generateDocumentIdealAnswer(question) {
   const prompt = `You are a senior technical interviewer.
 
@@ -1159,4 +1214,5 @@ module.exports = {
   generateDocumentIdealAnswer,
   evaluateDocumentInterviewAnswer,
   generateDocumentInterviewSummary,
+  extractQuestionAnswerPairsWithAI,
 };

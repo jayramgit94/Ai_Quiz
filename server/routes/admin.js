@@ -6,8 +6,8 @@ const Review = require("../models/Review");
 const router = express.Router();
 
 const JWT_SECRET = String(process.env.JWT_SECRET || "").trim();
-const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || "").trim();
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
+const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || "admin").trim();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "@123456").trim();
 
 if (!JWT_SECRET && process.env.NODE_ENV !== "production") {
   console.warn("JWT_SECRET is not set. Using development fallback secret.");
@@ -50,6 +50,12 @@ router.post("/login", async (req, res) => {
   });
 
   res.json({ token, admin: { username } });
+});
+
+router.get("/status", (req, res) => {
+  res.json({
+    configured: Boolean(ADMIN_USERNAME && ADMIN_PASSWORD),
+  });
 });
 
 router.get("/overview", adminAuth, async (req, res) => {

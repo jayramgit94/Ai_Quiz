@@ -9,11 +9,13 @@ const DocumentInterview = require("../models/DocumentInterview");
 const { authMiddleware } = require("./auth");
 const {
   evaluateDocumentInterviewAnswer,
+  extractQuestionAnswerPairsWithAI,
   generateDocumentIdealAnswer,
   generateDocumentInterviewSummary,
 } = require("../services/grokService");
 const {
   compareAnswers,
+  mergeExtractedQuestionAnswers,
   parseQuestionAnswerDocument,
 } = require("../utils/documentInterview");
 
@@ -122,7 +124,12 @@ router.post(
         });
       }
 
-      const extracted = parseQuestionAnswerDocument(rawText);
+      const extractedRuleBased = parseQuestionAnswerDocument(rawText);
+      const extractedAi = await extractQuestionAnswerPairsWithAI(rawText);
+      const extracted = mergeExtractedQuestionAnswers(
+        extractedRuleBased,
+        extractedAi,
+      );
       if (!extracted.length) {
         session.status = "ready";
         await session.save();

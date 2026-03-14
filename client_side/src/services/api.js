@@ -79,7 +79,8 @@ export const getTopicLeaderboard = (topic) =>
 
 // ─── DASHBOARD ───
 export const getUserProgress = (userName) =>
-  api.get(`/leaderboard/progress/${encodeURIComponent(userName)}`);
+  api.get(`/leaderboard/progress/by-name/${encodeURIComponent(userName)}`);
+export const getMyProgress = () => api.get("/leaderboard/progress/me");
 
 // ─── DAILY CHALLENGE ───
 export const getDailyChallenge = () => api.get("/leaderboard/daily-challenge");
@@ -142,6 +143,7 @@ export const publishReview = (data) => api.post("/reviews", data);
 
 // ─── ADMIN ───
 export const adminLogin = (data) => api.post("/admin/login", data);
+export const getAdminStatus = () => api.get("/admin/status");
 export const getAdminOverview = (token) =>
   api.get("/admin/overview", {
     headers: {

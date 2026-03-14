@@ -406,16 +406,41 @@ html[data-theme="dark"] .journey-card {
 }
 
 .review-ribbon-track {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  align-items: stretch;
   gap: 0.8rem;
+  overflow: hidden;
+  width: 100%;
+  padding-bottom: 0.2rem;
+}
+
+.review-ribbon-lane {
+  display: flex;
+  gap: 0.8rem;
+  min-width: max-content;
+  animation: review-belt-scroll 42s linear infinite;
 }
 
 .review-ribbon-card {
+  width: clamp(250px, 26vw, 340px);
+  flex: 0 0 auto;
   padding: 0.95rem;
   border-radius: 18px;
   border: 1px solid rgba(113, 129, 166, 0.14);
   background: rgba(255, 255, 255, 0.62);
+}
+
+.review-ribbon-track:hover .review-ribbon-lane {
+  animation-play-state: paused;
+}
+
+@keyframes review-belt-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-100% - 0.8rem));
+  }
 }
 
 html[data-theme="dark"] .review-ribbon-card {
@@ -565,8 +590,8 @@ html[data-theme="dark"] .cta-card {
     grid-template-columns: 1fr;
   }
 
-  .review-ribbon-track {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .review-ribbon-card {
+    width: clamp(230px, 44vw, 320px);
   }
 
   .cta-actions {
@@ -601,6 +626,10 @@ html[data-theme="dark"] .cta-card {
     grid-template-columns: 1fr;
   }
 
+  .review-ribbon-card {
+    width: min(84vw, 320px);
+  }
+
   .hero-actions,
   .cta-actions {
     flex-direction: column;
@@ -615,5 +644,11 @@ html[data-theme="dark"] .cta-card {
 
   .journey-card {
     align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-ribbon-lane {
+    animation: none;
   }
 }
