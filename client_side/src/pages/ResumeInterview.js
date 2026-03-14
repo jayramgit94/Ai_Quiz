@@ -54,6 +54,76 @@ function hasMeaningfulAnswer(text, level = "medium") {
   return words.length >= getMinWordsByDifficulty(level);
 }
 
+function normalizeSpeechSegment(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function mergeUniqueTranscript(existing, incoming) {
+  const previous = String(existing || "").trim();
+  const addition = String(incoming || "").trim();
+  if (!addition) return previous;
+  if (!previous) return addition;
+
+  const prevNorm = normalizeSpeechSegment(previous);
+  const addNorm = normalizeSpeechSegment(addition);
+
+  if (prevNorm.endsWith(addNorm) || prevNorm.includes(` ${addNorm} `)) {
+    return previous;
+  }
+  if (addNorm.endsWith(prevNorm)) {
+    return addition;
+  }
+
+  const prevWords = previous.split(/\s+/);
+  const addWords = addition.split(/\s+/);
+  const maxOverlap = Math.min(12, prevWords.length, addWords.length);
+  let overlap = 0;
+
+  for (let n = maxOverlap; n >= 1; n--) {
+    const tail = prevWords.slice(-n).join(" ").toLowerCase();
+    const head = addWords.slice(0, n).join(" ").toLowerCase();
+    if (tail === head) {
+      overlap = n;
+      break;
+    }
+  }
+
+  const merged = overlap
+    ? `${previous} ${addWords.slice(overlap).join(" ")}`
+    : `${previous} ${addition}`;
+  return merged.replace(/\s+/g, " ").trim();
+}
+
+function compressSpeechArtifacts(text) {
+  const words = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+
+  if (!words.length) return "";
+
+  const result = [];
+  let previous = "";
+  let count = 0;
+
+  for (const word of words) {
+    const normalized = word.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (normalized && normalized === previous) {
+      count += 1;
+    } else {
+      previous = normalized;
+      count = 1;
+    }
+    if (count <= 2) result.push(word);
+  }
+
+  return result.join(" ").trim();
+}
+
 export default function ResumeInterview() {
   const navigate = useNavigate();
   const { user, updateUser } = useAuth();
@@ -107,6 +177,7 @@ export default function ResumeInterview() {
   const isRecordingRef = useRef(false); // kept in sync with isRecording state to avoid stale closures
   const transcriptRef = useRef("");
   const interimTranscriptRef = useRef("");
+  const lastFinalChunkRef = useRef("");
   const handleStopAnswerRef = useRef(null);
 
   // ═══════════════════════════════════════════════════
@@ -291,20 +362,24 @@ export default function ResumeInterview() {
 
     recognition.onresult = (event) => {
       let interim = "";
-      let final = "";
+      let finalCombined = "";
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const t = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          final += t + " ";
+          finalCombined = mergeUniqueTranscript(finalCombined, t);
         } else {
           interim += t;
         }
       }
 
-      if (final) {
+      const final = compressSpeechArtifacts(finalCombined);
+      const normalizedFinal = normalizeSpeechSegment(final);
+      if (final && normalizedFinal !== lastFinalChunkRef.current) {
+        lastFinalChunkRef.current = normalizedFinal;
         setTranscript((prev) => {
-          const next = prev + final;
+          const merged = mergeUniqueTranscript(prev, final);
+          const next = compressSpeechArtifacts(merged);
           transcriptRef.current = next;
           return next;
         });
@@ -457,6 +532,7 @@ export default function ResumeInterview() {
     setError("");
     setInterimTranscript("");
     interimTranscriptRef.current = "";
+    lastFinalChunkRef.current = "";
     setTimer(0);
     isRecordingRef.current = true;
     setIsRecording(true);
@@ -478,8 +554,12 @@ export default function ResumeInterview() {
       timerRef.current = null;
     }
 
-    const currentTranscript =
-      `${transcriptRef.current} ${interimTranscriptRef.current}`.trim();
+    const currentTranscript = compressSpeechArtifacts(
+      mergeUniqueTranscript(
+        transcriptRef.current,
+        interimTranscriptRef.current,
+      ),
+    );
     setTranscript(currentTranscript);
     transcriptRef.current = currentTranscript;
     setInterimTranscript("");

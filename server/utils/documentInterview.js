@@ -34,6 +34,56 @@ const STOP_WORDS = new Set([
   "these",
 ]);
 
+const FILLER_WORDS = new Set([
+  "uh",
+  "um",
+  "hmm",
+  "huh",
+  "ah",
+  "like",
+  "actually",
+  "basically",
+  "literally",
+  "kinda",
+  "sorta",
+]);
+
+const TOKEN_ALIASES = new Map([
+  ["cse", "computerscienceengineering"],
+  ["cs", "computerscience"],
+  ["btech", "bacheloroftechnology"],
+  ["be", "bachelorofengineering"],
+  ["ai", "artificialintelligence"],
+  ["ml", "machinelearning"],
+  ["js", "javascript"],
+  ["nodejs", "node"],
+  ["reactjs", "react"],
+  ["mongodb", "mongo"],
+]);
+
+const SYNONYM_GROUPS = [
+  ["build", "create", "develop", "implement"],
+  ["improve", "optimize", "enhance", "refine"],
+  ["team", "collaborate", "collaboration", "teammate"],
+  ["project", "application", "app", "system", "platform"],
+  ["problem", "issue", "challenge", "difficulty"],
+  ["learn", "study", "understand", "grasp"],
+  ["explain", "describe", "clarify", "summarize"],
+  ["experience", "worked", "background", "exposure"],
+  ["lead", "led", "manage", "managed"],
+];
+
+const SYNONYM_CANONICAL = (() => {
+  const map = new Map();
+  for (const group of SYNONYM_GROUPS) {
+    const canonical = group[0];
+    for (const word of group) {
+      map.set(word, canonical);
+    }
+  }
+  return map;
+})();
+
 const QUESTION_STARTERS = new Set([
   "what",
   "why",
@@ -343,6 +393,43 @@ function normalizeQuestionKey(text) {
     .trim();
 }
 
+function normalizeSemanticPhrases(text) {
+  return String(text || "")
+    .replace(
+      /\bcomputer\s+science\s+engineering\b/gi,
+      " computerscienceengineering ",
+    )
+    .replace(/\bcomputer\s+science\b/gi, " computerscience ")
+    .replace(/\bartificial\s+intelligence\b/gi, " artificialintelligence ")
+    .replace(/\bmachine\s+learning\b/gi, " machinelearning ")
+    .replace(/\bdeep\s+learning\b/gi, " deeplearning ")
+    .replace(/\bdata\s+structures\b/gi, " datastructures ")
+    .replace(/\bobject\s+oriented\s+programming\b/gi, " oop ")
+    .replace(/\bproblem\s+solving\b/gi, " problemsolving ");
+}
+
+function stemToken(token) {
+  let normalized = token;
+  if (normalized.endsWith("ing") && normalized.length > 5) {
+    normalized = normalized.slice(0, -3);
+  } else if (normalized.endsWith("ied") && normalized.length > 5) {
+    normalized = `${normalized.slice(0, -3)}y`;
+  } else if (normalized.endsWith("ed") && normalized.length > 4) {
+    normalized = normalized.slice(0, -2);
+  } else if (normalized.endsWith("es") && normalized.length > 4) {
+    normalized = normalized.slice(0, -2);
+  } else if (normalized.endsWith("s") && normalized.length > 3) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+}
+
+function canonicalizeToken(token) {
+  const alias = TOKEN_ALIASES.get(token) || token;
+  const stemmed = stemToken(alias);
+  return SYNONYM_CANONICAL.get(stemmed) || stemmed;
+}
+
 function normalizeExtractedPairs(pairs = []) {
   return (Array.isArray(pairs) ? pairs : [])
     .map((item) => ({
@@ -404,34 +491,71 @@ function mergeExtractedQuestionAnswers(rulePairs = [], aiPairs = []) {
 }
 
 function tokenize(value) {
-  const normalizeToken = (token) => {
-    if (!token) return "";
-    let normalized = token.toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (normalized.endsWith("ing") && normalized.length > 5) {
-      normalized = normalized.slice(0, -3);
-    } else if (normalized.endsWith("ed") && normalized.length > 4) {
-      normalized = normalized.slice(0, -2);
-    } else if (normalized.endsWith("es") && normalized.length > 4) {
-      normalized = normalized.slice(0, -2);
-    } else if (normalized.endsWith("s") && normalized.length > 3) {
-      normalized = normalized.slice(0, -1);
-    }
-    return normalized;
-  };
-
-  return (value || "")
+  const rawTokens = normalizeSemanticPhrases(value || "")
     .replace(/[^a-z0-9\s]/gi, " ")
     .split(/\s+/)
-    .map(normalizeToken)
-    .filter((token) => token && token.length > 1 && !STOP_WORDS.has(token));
+    .map((token) =>
+      canonicalizeToken(token.toLowerCase().replace(/[^a-z0-9]/g, "")),
+    )
+    .filter(
+      (token) =>
+        token &&
+        token.length > 1 &&
+        !STOP_WORDS.has(token) &&
+        !FILLER_WORDS.has(token),
+    );
+
+  // Avoid speech-to-text stutter biasing similarity by collapsing long repeats.
+  const deduped = [];
+  let prev = "";
+  let repeatCount = 0;
+  for (const token of rawTokens) {
+    if (token === prev) {
+      repeatCount += 1;
+    } else {
+      prev = token;
+      repeatCount = 1;
+    }
+    if (repeatCount <= 2) deduped.push(token);
+  }
+
+  return deduped;
 }
 
 function toFrequencyMap(tokens) {
   const map = new Map();
   for (const token of tokens) {
-    map.set(token, (map.get(token) || 0) + 1);
+    // Cap token frequency to reduce repeated-word inflation from speech recognition.
+    const next = (map.get(token) || 0) + 1;
+    map.set(token, Math.min(next, 3));
   }
   return map;
+}
+
+function levenshteinDistance(a = "", b = "") {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const dp = Array.from({ length: rows }, () => new Array(cols).fill(0));
+
+  for (let i = 0; i < rows; i++) dp[i][0] = i;
+  for (let j = 0; j < cols; j++) dp[0][j] = j;
+
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < cols; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return dp[a.length][b.length];
 }
 
 function cosineSimilarity(tokensA, tokensB) {
@@ -497,6 +621,12 @@ function compareAnswers(userAnswer, referenceAnswer) {
       if (token.includes(term) || term.includes(token)) {
         if (Math.min(token.length, term.length) >= 4) return true;
       }
+      const distance = levenshteinDistance(token, term);
+      const allowed = Math.max(
+        1,
+        Math.floor(Math.min(token.length, term.length) * 0.2),
+      );
+      if (distance <= allowed) return true;
     }
     return false;
   };
@@ -524,7 +654,7 @@ function compareAnswers(userAnswer, referenceAnswer) {
     jaccard: Math.round(jaccard * 100),
     keyCoverage: Math.round(keyCoverage * 100),
     matchedKeyTerms: matched,
-    missingKeyTerms: keyTerms.filter((term) => !userSet.has(term)).slice(0, 8),
+    missingKeyTerms: keyTerms.filter((term) => !softMatch(term)).slice(0, 8),
   };
 }
 

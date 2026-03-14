@@ -32,7 +32,44 @@ function WordDiff({ userAnswer, referenceAnswer }) {
       <em className="wd-skipped">Question skipped — no answer recorded</em>
     );
   }
-  const normalize = (w) => w.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const synonymGroups = [
+    ["build", "create", "develop", "implement"],
+    ["improve", "optimize", "enhance"],
+    ["project", "app", "application", "system"],
+    ["team", "collaborate", "collaboration", "teammate"],
+    ["experience", "background", "worked"],
+  ];
+  const synonymMap = new Map();
+  synonymGroups.forEach((group) => {
+    group.forEach((token) => synonymMap.set(token, group[0]));
+  });
+  const stem = (token) => {
+    let t = token;
+    if (t.endsWith("ing") && t.length > 5) t = t.slice(0, -3);
+    else if (t.endsWith("ied") && t.length > 5) t = `${t.slice(0, -3)}y`;
+    else if (t.endsWith("ed") && t.length > 4) t = t.slice(0, -2);
+    else if (t.endsWith("es") && t.length > 4) t = t.slice(0, -2);
+    else if (t.endsWith("s") && t.length > 3) t = t.slice(0, -1);
+    return t;
+  };
+  const normalize = (w) => {
+    const basic = String(w || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+    const stemmed = stem(basic);
+    return synonymMap.get(stemmed) || stemmed;
+  };
+  const softRefMatch = (nw, refSet) => {
+    if (!nw) return false;
+    if (refSet.has(nw)) return true;
+    for (const token of refSet) {
+      if (token.startsWith(nw) || nw.startsWith(token)) return true;
+      if (Math.min(token.length, nw.length) >= 5) {
+        if (token.includes(nw) || nw.includes(token)) return true;
+      }
+    }
+    return false;
+  };
   const refSet = new Set(
     (referenceAnswer || "").split(/\s+/).map(normalize).filter(Boolean),
   );
@@ -46,7 +83,7 @@ function WordDiff({ userAnswer, referenceAnswer }) {
           return (
             <span
               key={i}
-              className={nw && refSet.has(nw) ? "wd-match" : "wd-miss"}
+              className={softRefMatch(nw, refSet) ? "wd-match" : "wd-miss"}
             >
               {word}{" "}
             </span>
@@ -79,6 +116,76 @@ function hasMeaningfulAnswer(text, level = "medium") {
     .split(/\s+/)
     .filter(Boolean);
   return words.length >= getMinWordsByDifficulty(level);
+}
+
+function normalizeSpeechSegment(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function mergeUniqueTranscript(existing, incoming) {
+  const previous = String(existing || "").trim();
+  const addition = String(incoming || "").trim();
+  if (!addition) return previous;
+  if (!previous) return addition;
+
+  const prevNorm = normalizeSpeechSegment(previous);
+  const addNorm = normalizeSpeechSegment(addition);
+
+  if (prevNorm.endsWith(addNorm) || prevNorm.includes(` ${addNorm} `)) {
+    return previous;
+  }
+  if (addNorm.endsWith(prevNorm)) {
+    return addition;
+  }
+
+  const prevWords = previous.split(/\s+/);
+  const addWords = addition.split(/\s+/);
+  const maxOverlap = Math.min(12, prevWords.length, addWords.length);
+  let overlap = 0;
+
+  for (let n = maxOverlap; n >= 1; n--) {
+    const tail = prevWords.slice(-n).join(" ").toLowerCase();
+    const head = addWords.slice(0, n).join(" ").toLowerCase();
+    if (tail === head) {
+      overlap = n;
+      break;
+    }
+  }
+
+  const merged = overlap
+    ? `${previous} ${addWords.slice(overlap).join(" ")}`
+    : `${previous} ${addition}`;
+  return merged.replace(/\s+/g, " ").trim();
+}
+
+function compressSpeechArtifacts(text) {
+  const words = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+
+  if (!words.length) return "";
+
+  const result = [];
+  let previous = "";
+  let count = 0;
+
+  for (const word of words) {
+    const normalized = word.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (normalized && normalized === previous) {
+      count += 1;
+    } else {
+      previous = normalized;
+      count = 1;
+    }
+    if (count <= 2) result.push(word);
+  }
+
+  return result.join(" ").trim();
 }
 
 export default function DocumentInterview() {
@@ -130,6 +237,7 @@ export default function DocumentInterview() {
   const handleStopAnswerRef = useRef(null);
   const transcriptRef = useRef("");
   const interimTranscriptRef = useRef("");
+  const lastFinalChunkRef = useRef("");
   const [pendingEval, setPendingEval] = useState(null);
 
   useEffect(() => {
@@ -316,20 +424,24 @@ export default function DocumentInterview() {
 
     recognition.onresult = (event) => {
       let interim = "";
-      let final = "";
+      let finalCombined = "";
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const value = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          final += `${value} `;
+          finalCombined = mergeUniqueTranscript(finalCombined, value);
         } else {
           interim += value;
         }
       }
 
-      if (final) {
+      const final = compressSpeechArtifacts(finalCombined);
+      const normalizedFinal = normalizeSpeechSegment(final);
+      if (final && normalizedFinal !== lastFinalChunkRef.current) {
+        lastFinalChunkRef.current = normalizedFinal;
         setTranscript((prev) => {
-          const next = prev + final;
+          const merged = mergeUniqueTranscript(prev, final);
+          const next = compressSpeechArtifacts(merged);
           transcriptRef.current = next;
           return next;
         });
@@ -465,6 +577,7 @@ export default function DocumentInterview() {
     setError("");
     setInterimTranscript("");
     interimTranscriptRef.current = "";
+    lastFinalChunkRef.current = "";
     setTimer(0);
     isRecordingRef.current = true;
     setIsRecording(true);
@@ -484,8 +597,12 @@ export default function DocumentInterview() {
       timerRef.current = null;
     }
 
-    const finalTranscript =
-      `${transcriptRef.current} ${interimTranscriptRef.current}`.trim();
+    const finalTranscript = compressSpeechArtifacts(
+      mergeUniqueTranscript(
+        transcriptRef.current,
+        interimTranscriptRef.current,
+      ),
+    );
     setTranscript(finalTranscript);
     transcriptRef.current = finalTranscript;
     setInterimTranscript("");
