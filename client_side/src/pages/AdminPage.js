@@ -1,7 +1,13 @@
 import { BarChart2, Clock3, Shield, Star, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { adminLogin, getAdminOverview, getAdminStatus } from "../services/api";
+import {
+  adminLogin,
+  getAdminOverview,
+  getAdminStatus,
+  getAdminUserProfile,
+  getAdminUsers,
+} from "../services/api";
 import "./AdminPage.css";
 
 const ADMIN_TOKEN_KEY = "ai-quiz-admin-token";
@@ -25,6 +31,10 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [overview, setOverview] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedProfile, setSelectedProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   const isLoggedIn = Boolean(token);
 
@@ -32,10 +42,15 @@ export default function AdminPage() {
     setLoading(true);
     setError("");
     try {
-      const { data } = await getAdminOverview(adminToken);
-      setOverview(data);
+      const [overviewRes, usersRes] = await Promise.all([
+        getAdminOverview(adminToken),
+        getAdminUsers(adminToken),
+      ]);
+      setOverview(overviewRes.data);
+      setUsers(usersRes.data?.users || []);
     } catch (err) {
       setOverview(null);
+      setUsers([]);
       setError(err.response?.data?.error || "Failed to load admin data.");
       if (err.response?.status === 401 || err.response?.status === 403) {
         localStorage.removeItem(ADMIN_TOKEN_KEY);
@@ -43,6 +58,22 @@ export default function AdminPage() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openUserProfile = async (userId) => {
+    if (!userId || !token) return;
+    setSelectedUserId(userId);
+    setSelectedProfile(null);
+    setProfileLoading(true);
+    setError("");
+    try {
+      const { data } = await getAdminUserProfile(token, userId);
+      setSelectedProfile(data);
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to load user profile.");
+    } finally {
+      setProfileLoading(false);
     }
   };
 
@@ -237,6 +268,7 @@ export default function AdminPage() {
                       <th>Quizzes</th>
                       <th>Interviews</th>
                       <th>Best Accuracy</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -250,17 +282,162 @@ export default function AdminPage() {
                           <td>{u.totalQuizzes || 0}</td>
                           <td>{u.totalInterviews || 0}</td>
                           <td>{u.bestAccuracy || 0}%</td>
+                          <td>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => {
+                                const user = (users || []).find(
+                                  (item) => item.email === u.email,
+                                );
+                                if (user?.id) openUserProfile(user.id);
+                              }}
+                            >
+                              View Profile
+                            </button>
+                          </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={7}>No users found.</td>
+                        <td colSpan={8}>No users found.</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
             </div>
+
+            <div className="card admin-table-wrap animate-fade-in-up delay-1">
+              <h3>All Users</h3>
+              <div className="admin-table-scroll">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Current Activity</th>
+                      <th>XP</th>
+                      <th>Joined</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(users || []).length ? (
+                      (users || []).map((u) => (
+                        <tr key={u.id}>
+                          <td>{u.displayName || "-"}</td>
+                          <td>{u.email || "-"}</td>
+                          <td>
+                            {u.currentInterview
+                              ? `${u.currentInterview.type || "interview"} (${u.currentInterview.status || "in-progress"})`
+                              : "Idle"}
+                          </td>
+                          <td>{u.xp || 0}</td>
+                          <td>{formatDate(u.createdAt)}</td>
+                          <td>
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => openUserProfile(u.id)}
+                              disabled={
+                                profileLoading && selectedUserId === u.id
+                              }
+                            >
+                              {profileLoading && selectedUserId === u.id
+                                ? "Loading..."
+                                : "Open"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6}>No users found.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {(selectedProfile || profileLoading) && (
+              <div className="card admin-user-profile animate-fade-in-up delay-1">
+                <h3>User Profile Drilldown</h3>
+                {profileLoading && (
+                  <p className="admin-empty">Loading profile...</p>
+                )}
+                {!profileLoading && selectedProfile && (
+                  <>
+                    <div className="admin-user-meta-grid">
+                      <div>
+                        <strong>Name:</strong>{" "}
+                        {selectedProfile.user?.displayName || "-"}
+                      </div>
+                      <div>
+                        <strong>Email:</strong>{" "}
+                        {selectedProfile.user?.email || "-"}
+                      </div>
+                      <div>
+                        <strong>Total Interviews:</strong>{" "}
+                        {selectedProfile.user?.totalInterviews || 0}
+                      </div>
+                      <div>
+                        <strong>Current:</strong>{" "}
+                        {selectedProfile.interviewData?.currentInterview
+                          ? `${selectedProfile.interviewData.currentInterview.type || "interview"} (${selectedProfile.interviewData.currentInterview.status || "in-progress"})`
+                          : "Idle"}
+                      </div>
+                    </div>
+
+                    <div className="admin-table-scroll">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Role</th>
+                            <th>Difficulty</th>
+                            <th>Score</th>
+                            <th>Grade</th>
+                            <th>Completed</th>
+                            <th>Session</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedProfile.interviewData?.all || []).length ? (
+                            (selectedProfile.interviewData?.all || []).map(
+                              (item, idx) => (
+                                <tr
+                                  key={`${item.type || "interview"}-${item.sessionId || idx}-${idx}`}
+                                >
+                                  <td>{item.type || "-"}</td>
+                                  <td>{item.status || "-"}</td>
+                                  <td>{item.role || "-"}</td>
+                                  <td>{item.difficulty || "-"}</td>
+                                  <td>{item.overallScore || 0}</td>
+                                  <td>{item.grade || "N/A"}</td>
+                                  <td>
+                                    {formatDate(
+                                      item.completedAt || item.updatedAt,
+                                    )}
+                                  </td>
+                                  <td>{item.sessionId || "-"}</td>
+                                </tr>
+                              ),
+                            )
+                          ) : (
+                            <tr>
+                              <td colSpan={8}>
+                                No interview records for this user.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="admin-secondary-grid">
               <div className="card admin-table-wrap animate-fade-in-up delay-1">

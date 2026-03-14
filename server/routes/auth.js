@@ -1,6 +1,9 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const QuizSession = require("../models/QuizSession");
+const ResumeInterview = require("../models/ResumeInterview");
+const DocumentInterview = require("../models/DocumentInterview");
 
 const router = express.Router();
 
@@ -40,7 +43,61 @@ function sanitizeUser(user) {
     bestAccuracy: user.bestAccuracy,
     topicStats: user.topicStats,
     accuracyHistory: user.accuracyHistory,
+    quizHistory: user.quizHistory || [],
+    interviewHistory: user.interviewHistory || [],
+    currentInterview: user.currentInterview || null,
   };
+}
+
+function toDateOrNow(value) {
+  const parsed = value ? new Date(value) : new Date();
+  if (Number.isNaN(parsed.getTime())) return new Date();
+  return parsed;
+}
+
+function clampScore(value) {
+  return Math.max(0, Math.min(100, Number(value) || 0));
+}
+
+function normalizeInterviewQuestionDetails(details = []) {
+  const list = Array.isArray(details) ? details : [];
+  return list.slice(0, 60).map((item, index) => ({
+    questionIndex: Number(item?.questionIndex ?? index),
+    question: String(item?.question || ""),
+    userAnswer: String(item?.userAnswer || item?.transcript || ""),
+    referenceAnswer: String(item?.referenceAnswer || ""),
+    score: clampScore(item?.score ?? item?.evaluation?.score),
+    relevance: clampScore(item?.relevance ?? item?.evaluation?.relevance),
+    accuracy: clampScore(item?.accuracy ?? item?.evaluation?.accuracy),
+    communication: clampScore(
+      item?.communication ??
+        item?.evaluation?.communication ??
+        item?.evaluation?.communicationClarity,
+    ),
+    semanticSimilarity: clampScore(
+      item?.semanticSimilarity ?? item?.evaluation?.semanticSimilarity,
+    ),
+    feedback: String(item?.feedback || item?.evaluation?.feedback || ""),
+    duration: Math.max(0, Number(item?.duration || 0)),
+  }));
+}
+
+function normalizeQuizQuestionDetails(details = []) {
+  const list = Array.isArray(details) ? details : [];
+  return list.slice(0, 60).map((item, index) => ({
+    questionIndex: Number(item?.questionIndex ?? index),
+    question: String(item?.question || ""),
+    options: Array.isArray(item?.options) ? item.options.map(String) : [],
+    selectedAnswer: String(item?.selectedAnswer || ""),
+    correctAnswer: String(item?.correctAnswer || ""),
+    isCorrect: Boolean(item?.isCorrect),
+    confidence: String(item?.confidence || "medium"),
+    timeTaken: Math.max(0, Number(item?.timeTaken || 0)),
+    explanation: String(item?.explanation || ""),
+    interviewTip: String(item?.interviewTip || ""),
+    topic: String(item?.topic || ""),
+    difficulty: String(item?.difficulty || ""),
+  }));
 }
 
 // Middleware to verify JWT
@@ -173,7 +230,20 @@ router.put("/profile", authMiddleware, async (req, res) => {
 // Record quiz results to user profile (called after quiz submission)
 router.post("/record-quiz", authMiddleware, async (req, res) => {
   try {
-    const { topic, accuracy, score, totalQuestions, difficulty } = req.body;
+    const {
+      sessionId,
+      topic,
+      accuracy,
+      score,
+      totalQuestions,
+      difficulty,
+      detailedResults,
+      speedScore,
+      finalScore,
+      weakTopics,
+      strongTopics,
+      nextDifficulty,
+    } = req.body;
     const normalizedTopic = String(topic || "").trim();
     const normalizedAccuracy = Math.min(
       100,
@@ -234,6 +304,76 @@ router.post("/record-quiz", authMiddleware, async (req, res) => {
       user.accuracyHistory = user.accuracyHistory.slice(-100);
     }
 
+    let sessionSummary = null;
+    let questionDetails = normalizeQuizQuestionDetails(detailedResults || []);
+    if (!questionDetails.length && sessionId) {
+      const session = await QuizSession.findOne({ sessionId }).lean();
+      sessionSummary = session;
+      if (session?.questions?.length) {
+        const answerMap = new Map(
+          (session.answers || []).map((ans) => [ans.questionIndex, ans]),
+        );
+        questionDetails = normalizeQuizQuestionDetails(
+          session.questions.map((q, index) => {
+            const ans = answerMap.get(index) || {};
+            return {
+              questionIndex: index,
+              question: q.question,
+              options: q.options || [],
+              selectedAnswer: ans.selectedAnswer || "",
+              correctAnswer: q.correctAnswer || "",
+              isCorrect: Boolean(ans.isCorrect),
+              confidence: ans.confidence || "medium",
+              timeTaken: ans.timeTaken || 0,
+              explanation: q.explanation || "",
+              interviewTip: q.interviewTip || "",
+              topic: q.topic || normalizedTopic,
+              difficulty: q.difficulty || difficulty || "medium",
+            };
+          }),
+        );
+      }
+    }
+
+    user.quizHistory = Array.isArray(user.quizHistory) ? user.quizHistory : [];
+    user.quizHistory.push({
+      sessionId: String(sessionId || "").trim(),
+      topic: normalizedTopic,
+      difficulty: String(difficulty || "medium"),
+      score: normalizedScore,
+      totalQuestions: normalizedTotalQuestions,
+      accuracy: normalizedAccuracy,
+      speedScore: Math.max(
+        0,
+        Number(sessionSummary?.speedScore ?? speedScore ?? 0),
+      ),
+      finalScore: Math.max(
+        0,
+        Number(sessionSummary?.finalScore ?? finalScore ?? 0),
+      ),
+      weakTopics: Array.isArray(sessionSummary?.weakTopics)
+        ? sessionSummary.weakTopics.map(String)
+        : Array.isArray(weakTopics)
+          ? weakTopics.map(String)
+          : [],
+      strongTopics: Array.isArray(sessionSummary?.strongTopics)
+        ? sessionSummary.strongTopics.map(String)
+        : Array.isArray(strongTopics)
+          ? strongTopics.map(String)
+          : [],
+      nextDifficulty: String(
+        sessionSummary?.nextDifficulty ||
+          nextDifficulty ||
+          difficulty ||
+          "medium",
+      ),
+      questionDetails,
+      completedAt: new Date(),
+    });
+    if (user.quizHistory.length > 150) {
+      user.quizHistory = user.quizHistory.slice(-150);
+    }
+
     // Award XP
     let xpEarned = 10; // base XP for completing
     if (normalizedAccuracy >= 90) xpEarned += 20;
@@ -260,6 +400,7 @@ router.post("/record-quiz", authMiddleware, async (req, res) => {
         bestAccuracy: user.bestAccuracy,
         achievements: user.achievements,
         topicStats: user.topicStats,
+        quizHistory: user.quizHistory,
       },
     });
   } catch (err) {
@@ -271,13 +412,99 @@ router.post("/record-quiz", authMiddleware, async (req, res) => {
 // ─── POST /api/auth/record-interview ───
 router.post("/record-interview", authMiddleware, async (req, res) => {
   try {
-    const { overallScore } = req.body;
+    const {
+      overallScore,
+      sessionId,
+      interviewType,
+      role,
+      difficulty,
+      status,
+      grade,
+      questionCount,
+      durationSeconds,
+      startedAt,
+      completedAt,
+      questionDetails,
+    } = req.body || {};
+
+    const normalizedType = ["resume", "document", "live"].includes(
+      String(interviewType || "").toLowerCase(),
+    )
+      ? String(interviewType).toLowerCase()
+      : "other";
+    const normalizedStatus = ["in-progress", "completed", "abandoned"].includes(
+      String(status || "").toLowerCase(),
+    )
+      ? String(status).toLowerCase()
+      : "completed";
+
     const user = await User.findByIdAndUpdate(
       req.userId,
       { $inc: { totalInterviews: 1 } },
       { new: true },
     );
     if (!user) return res.status(404).json({ error: "User not found" });
+
+    let resolvedQuestionDetails = normalizeInterviewQuestionDetails(
+      questionDetails || [],
+    );
+    if (!resolvedQuestionDetails.length && sessionId) {
+      if (normalizedType === "resume") {
+        const session = await ResumeInterview.findOne({ sessionId }).lean();
+        resolvedQuestionDetails = normalizeInterviewQuestionDetails(
+          (session?.responses || []).map((item) => ({
+            questionIndex: item.questionIndex,
+            question: item.question,
+            transcript: item.transcript,
+            referenceAnswer: item.referenceAnswer,
+            evaluation: item.evaluation,
+            duration: item.duration,
+          })),
+        );
+      }
+      if (normalizedType === "document") {
+        const session = await DocumentInterview.findOne({ sessionId }).lean();
+        resolvedQuestionDetails = normalizeInterviewQuestionDetails(
+          (session?.responses || []).map((item) => ({
+            questionIndex: item.questionIndex,
+            question: item.question,
+            transcript: item.transcript,
+            referenceAnswer: item.referenceAnswer,
+            evaluation: item.evaluation,
+            duration: item.duration,
+          })),
+        );
+      }
+    }
+
+    user.interviewHistory = Array.isArray(user.interviewHistory)
+      ? user.interviewHistory
+      : [];
+    user.interviewHistory.push({
+      sessionId: String(sessionId || "").trim(),
+      type: normalizedType,
+      role: String(role || "").trim(),
+      difficulty: String(difficulty || "medium").trim(),
+      status: normalizedStatus,
+      overallScore: Math.max(0, Math.min(100, Number(overallScore) || 0)),
+      grade: String(grade || "N/A").trim(),
+      questionCount: Math.max(0, Number(questionCount) || 0),
+      durationSeconds: Math.max(0, Number(durationSeconds) || 0),
+      questionDetails: resolvedQuestionDetails,
+      startedAt: startedAt ? new Date(startedAt) : undefined,
+      completedAt: completedAt
+        ? new Date(completedAt)
+        : normalizedStatus === "completed"
+          ? new Date()
+          : undefined,
+    });
+    if (user.interviewHistory.length > 120) {
+      user.interviewHistory = user.interviewHistory.slice(-120);
+    }
+    if (normalizedStatus === "completed") {
+      user.currentInterview = null;
+    }
+
     let xpEarned = 25;
     if (overallScore >= 80) xpEarned += 25;
     else if (overallScore >= 60) xpEarned += 15;
@@ -295,6 +522,8 @@ router.post("/record-interview", authMiddleware, async (req, res) => {
         level: user.level,
         totalInterviews: user.totalInterviews,
         achievements: user.achievements,
+        interviewHistory: user.interviewHistory,
+        currentInterview: user.currentInterview,
       },
     });
   } catch (err) {
@@ -351,6 +580,9 @@ router.delete("/clear-data", authMiddleware, async (req, res) => {
     user.bestAccuracy = 0;
     user.topicStats = [];
     user.accuracyHistory = [];
+    user.quizHistory = [];
+    user.interviewHistory = [];
+    user.currentInterview = null;
 
     await user.save();
     res.json({ success: true, message: "All data cleared" });

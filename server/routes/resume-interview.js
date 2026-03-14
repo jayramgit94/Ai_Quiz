@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
 const ResumeInterview = require("../models/ResumeInterview");
+const User = require("../models/User");
 const { authMiddleware } = require("./auth");
 const {
   parseResumeContent,
@@ -102,6 +103,7 @@ router.post(
       // Create initial session
       const session = new ResumeInterview({
         sessionId,
+        userId: req.userId,
         userName: userName.trim(),
         resume: {
           fileName: req.file.originalname,
@@ -117,6 +119,19 @@ router.post(
       });
 
       await session.save();
+
+      await User.findByIdAndUpdate(req.userId, {
+        $set: {
+          currentInterview: {
+            sessionId,
+            type: "resume",
+            role: role || "Software Engineer",
+            difficulty: difficulty || "medium",
+            status: "parsing",
+            updatedAt: new Date(),
+          },
+        },
+      });
 
       // Extract text from file
       const rawText = await extractText(req.file.path, req.file.originalname);
@@ -139,6 +154,19 @@ router.post(
       session.resume.parsed = parsed;
       session.status = "ready";
       await session.save();
+
+      await User.findByIdAndUpdate(req.userId, {
+        $set: {
+          currentInterview: {
+            sessionId,
+            type: "resume",
+            role: role || "Software Engineer",
+            difficulty: difficulty || "medium",
+            status: "ready",
+            updatedAt: new Date(),
+          },
+        },
+      });
 
       // Clean up uploaded file
       fs.unlink(req.file.path, () => {});
@@ -197,6 +225,19 @@ router.post("/generate-questions", authMiddleware, async (req, res) => {
     session.status = "in-progress";
     session.startedAt = new Date();
     await session.save();
+
+    await User.findByIdAndUpdate(req.userId, {
+      $set: {
+        currentInterview: {
+          sessionId,
+          type: "resume",
+          role: session.config?.role || "Software Engineer",
+          difficulty: session.config?.difficulty || "medium",
+          status: "in-progress",
+          updatedAt: new Date(),
+        },
+      },
+    });
 
     res.json({
       sessionId,
@@ -441,6 +482,10 @@ router.post("/complete", authMiddleware, async (req, res) => {
     session.status = "completed";
     session.completedAt = new Date();
     await session.save();
+
+    await User.findByIdAndUpdate(req.userId, {
+      $set: { currentInterview: null },
+    });
 
     res.json({
       sessionId,

@@ -2,6 +2,9 @@ const express = require("express");
 const LeaderboardEntry = require("../models/LeaderboardEntry");
 const DailyChallenge = require("../models/DailyChallenge");
 const User = require("../models/User");
+const QuizSession = require("../models/QuizSession");
+const ResumeInterview = require("../models/ResumeInterview");
+const DocumentInterview = require("../models/DocumentInterview");
 const { generateQuizQuestions } = require("../services/grokService");
 const { validateQuestionSet } = require("../utils/validation");
 const { authMiddleware } = require("./auth");
@@ -37,6 +40,147 @@ function getUtcDayOfYear(date = new Date()) {
   const startOfYear = Date.UTC(year, 0, 0);
   const currentDay = Date.UTC(year, date.getUTCMonth(), date.getUTCDate());
   return Math.floor((currentDay - startOfYear) / 86400000);
+}
+
+function toSafeDate(value) {
+  const parsed = value ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function mergeByKey(primary = [], secondary = [], getKey = (item) => item.id) {
+  const merged = new Map();
+  [...secondary, ...primary].forEach((item, index) => {
+    const key = getKey(item) || `fallback-${index}`;
+    if (!merged.has(key)) {
+      merged.set(key, item);
+      return;
+    }
+
+    const existing = merged.get(key);
+    const existingTime =
+      toSafeDate(
+        existing?.completedAt || existing?.startedAt || existing?.createdAt,
+      )?.getTime() || 0;
+    const currentTime =
+      toSafeDate(
+        item?.completedAt || item?.startedAt || item?.createdAt,
+      )?.getTime() || 0;
+    if (currentTime > existingTime) {
+      merged.set(key, item);
+    }
+  });
+
+  return [...merged.values()].sort((a, b) => {
+    const at =
+      toSafeDate(a?.completedAt || a?.startedAt || a?.createdAt)?.getTime() ||
+      0;
+    const bt =
+      toSafeDate(b?.completedAt || b?.startedAt || b?.createdAt)?.getTime() ||
+      0;
+    return bt - at;
+  });
+}
+
+function mapQuizSessionToHistory(session) {
+  const answerMap = new Map(
+    (session?.answers || []).map((answer) => [answer.questionIndex, answer]),
+  );
+
+  return {
+    sessionId: session?.sessionId || "",
+    topic: session?.topic || "",
+    difficulty: session?.difficulty || "medium",
+    score: Number(session?.score || 0),
+    totalQuestions: Number(session?.totalQuestions || 0),
+    accuracy: Number(session?.accuracy || 0),
+    speedScore: Number(session?.speedScore || 0),
+    finalScore: Number(session?.finalScore || 0),
+    weakTopics: Array.isArray(session?.weakTopics) ? session.weakTopics : [],
+    strongTopics: Array.isArray(session?.strongTopics)
+      ? session.strongTopics
+      : [],
+    nextDifficulty: session?.nextDifficulty || "medium",
+    questionDetails: (session?.questions || []).map((question, index) => {
+      const answer = answerMap.get(index) || {};
+      return {
+        questionIndex: index,
+        question: question?.question || "",
+        options: Array.isArray(question?.options) ? question.options : [],
+        selectedAnswer: answer?.selectedAnswer || "",
+        correctAnswer: question?.correctAnswer || "",
+        isCorrect: Boolean(answer?.isCorrect),
+        confidence: answer?.confidence || "medium",
+        timeTaken: Number(answer?.timeTaken || 0),
+        explanation: question?.explanation || "",
+        interviewTip: question?.interviewTip || "",
+        topic: question?.topic || session?.topic || "",
+        difficulty: question?.difficulty || session?.difficulty || "medium",
+      };
+    }),
+    completedAt: session?.updatedAt || session?.createdAt || new Date(),
+    createdAt: session?.createdAt || new Date(),
+  };
+}
+
+function mapResumeSessionToHistory(session) {
+  return {
+    sessionId: session?.sessionId || "",
+    type: "resume",
+    role: session?.config?.role || "Software Engineer",
+    difficulty: session?.config?.difficulty || "medium",
+    status: session?.status || "completed",
+    overallScore: Number(session?.results?.overallScore || 0),
+    grade: session?.results?.grade || "N/A",
+    questionCount: Number(session?.results?.questionsAnswered || 0),
+    durationSeconds: Number(session?.results?.totalDuration || 0),
+    questionDetails: (session?.responses || []).map((item, index) => ({
+      questionIndex: Number(item?.questionIndex ?? index),
+      question: item?.question || "",
+      userAnswer: item?.transcript || "",
+      referenceAnswer: item?.referenceAnswer || "",
+      score: Number(item?.evaluation?.score || 0),
+      relevance: Number(item?.evaluation?.relevance || 0),
+      accuracy: Number(item?.evaluation?.depth || 0),
+      communication: Number(item?.evaluation?.communication || 0),
+      semanticSimilarity: Number(item?.evaluation?.semanticSimilarity || 0),
+      feedback: item?.evaluation?.feedback || "",
+      duration: Number(item?.duration || 0),
+    })),
+    startedAt: session?.startedAt || session?.createdAt || null,
+    completedAt: session?.completedAt || session?.updatedAt || null,
+    createdAt: session?.createdAt || null,
+  };
+}
+
+function mapDocumentSessionToHistory(session) {
+  return {
+    sessionId: session?.sessionId || "",
+    type: "document",
+    role: session?.config?.role || "Software Engineer",
+    difficulty: session?.config?.difficulty || "medium",
+    status: session?.status || "completed",
+    overallScore: Number(session?.results?.overallScore || 0),
+    grade: session?.results?.grade || "N/A",
+    questionCount: Number(session?.results?.questionsAnswered || 0),
+    durationSeconds: Number(session?.results?.totalDuration || 0),
+    questionDetails: (session?.responses || []).map((item, index) => ({
+      questionIndex: Number(item?.questionIndex ?? index),
+      question: item?.question || "",
+      userAnswer: item?.transcript || "",
+      referenceAnswer: item?.referenceAnswer || "",
+      score: Number(item?.evaluation?.score || 0),
+      relevance: Number(item?.evaluation?.relevance || 0),
+      accuracy: Number(item?.evaluation?.accuracy || 0),
+      communication: Number(item?.evaluation?.communicationClarity || 0),
+      semanticSimilarity: Number(item?.evaluation?.semanticSimilarity || 0),
+      feedback: item?.evaluation?.feedback || "",
+      duration: Number(item?.duration || 0),
+    })),
+    startedAt: session?.startedAt || session?.createdAt || null,
+    completedAt: session?.completedAt || session?.updatedAt || null,
+    createdAt: session?.createdAt || null,
+  };
 }
 
 // ─── POST /api/leaderboard/add ───
@@ -213,7 +357,7 @@ router.get("/progress/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId)
       .select(
-        "displayName totalQuizzes totalCorrect totalQuestions topicStats accuracyHistory",
+        "displayName totalQuizzes totalCorrect totalQuestions topicStats accuracyHistory quizHistory interviewHistory currentInterview",
       )
       .lean();
 
@@ -267,6 +411,67 @@ router.get("/progress/me", authMiddleware, async (req, res) => {
       ? Math.round((totalCorrect / totalQuestions) * 100)
       : 0;
 
+    const [quizSessions, resumeSessions, documentSessions] = await Promise.all([
+      QuizSession.find({
+        userName: {
+          $regex: new RegExp(`^${escapeRegex(user.displayName || "")}$`, "i"),
+        },
+        completed: true,
+      })
+        .sort({ updatedAt: -1 })
+        .limit(120)
+        .lean(),
+      ResumeInterview.find({
+        $or: [
+          { userId: req.userId },
+          {
+            userName: {
+              $regex: new RegExp(
+                `^${escapeRegex(user.displayName || "")}$`,
+                "i",
+              ),
+            },
+          },
+        ],
+        status: "completed",
+      })
+        .sort({ completedAt: -1, updatedAt: -1 })
+        .limit(120)
+        .lean(),
+      DocumentInterview.find({
+        $or: [
+          { userId: req.userId },
+          {
+            userName: {
+              $regex: new RegExp(
+                `^${escapeRegex(user.displayName || "")}$`,
+                "i",
+              ),
+            },
+          },
+        ],
+        status: "completed",
+      })
+        .sort({ completedAt: -1, updatedAt: -1 })
+        .limit(120)
+        .lean(),
+    ]);
+
+    const mergedQuizHistory = mergeByKey(
+      Array.isArray(user.quizHistory) ? user.quizHistory : [],
+      quizSessions.map(mapQuizSessionToHistory),
+      (item) => item?.sessionId,
+    );
+
+    const mergedInterviewHistory = mergeByKey(
+      Array.isArray(user.interviewHistory) ? user.interviewHistory : [],
+      [
+        ...resumeSessions.map(mapResumeSessionToHistory),
+        ...documentSessions.map(mapDocumentSessionToHistory),
+      ],
+      (item) => `${item?.type || "other"}:${item?.sessionId || ""}`,
+    );
+
     return res.json({
       overallStats: {
         totalQuizzes,
@@ -275,6 +480,9 @@ router.get("/progress/me", authMiddleware, async (req, res) => {
       },
       topicHistory,
       accuracyHistory: user.accuracyHistory || [],
+      quizHistory: mergedQuizHistory,
+      interviewHistory: mergedInterviewHistory,
+      currentInterview: user.currentInterview || null,
     });
   } catch (err) {
     console.error("My progress error:", err.message);
@@ -282,6 +490,9 @@ router.get("/progress/me", authMiddleware, async (req, res) => {
       overallStats: { totalQuizzes: 0, totalCorrect: 0, averageAccuracy: 0 },
       topicHistory: [],
       accuracyHistory: [],
+      quizHistory: [],
+      interviewHistory: [],
+      currentInterview: null,
     });
   }
 });

@@ -2,6 +2,8 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Review = require("../models/Review");
+const ResumeInterview = require("../models/ResumeInterview");
+const DocumentInterview = require("../models/DocumentInterview");
 
 const router = express.Router();
 
@@ -160,6 +162,155 @@ router.get("/overview", adminAuth, async (req, res) => {
   } catch (err) {
     console.error("Admin overview error:", err.message);
     res.status(500).json({ error: "Failed to load admin overview" });
+  }
+});
+
+router.get("/users", adminAuth, async (req, res) => {
+  try {
+    const users = await User.find({})
+      .select(
+        "displayName email avatar country xp level streak totalQuizzes totalInterviews bestAccuracy totalCorrect totalQuestions createdAt updatedAt currentInterview",
+      )
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    res.json({
+      users: users.map((u) => ({
+        id: String(u._id),
+        displayName: u.displayName || "",
+        email: u.email || "",
+        country: u.country || "",
+        xp: u.xp || 0,
+        level: u.level || 1,
+        streak: u.streak || 0,
+        totalQuizzes: u.totalQuizzes || 0,
+        totalInterviews: u.totalInterviews || 0,
+        bestAccuracy: u.bestAccuracy || 0,
+        totalCorrect: u.totalCorrect || 0,
+        totalQuestions: u.totalQuestions || 0,
+        currentInterview: u.currentInterview || null,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+      })),
+    });
+  } catch (err) {
+    console.error("Admin users list error:", err.message);
+    res.status(500).json({ error: "Failed to load users" });
+  }
+});
+
+router.get("/users/:userId", adminAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId).select("-password").lean();
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const [resumeSessions, documentSessions] = await Promise.all([
+      ResumeInterview.find({
+        $or: [{ userId: user._id }, { userName: user.displayName }],
+      })
+        .select(
+          "sessionId status config role userName startedAt completedAt createdAt updatedAt results responses",
+        )
+        .sort({ createdAt: -1 })
+        .limit(80)
+        .lean(),
+      DocumentInterview.find({
+        $or: [{ userId: user._id }, { userName: user.displayName }],
+      })
+        .select(
+          "sessionId status config role userName startedAt completedAt createdAt updatedAt results responses",
+        )
+        .sort({ createdAt: -1 })
+        .limit(80)
+        .lean(),
+    ]);
+
+    const mapSessionToItem = (item, type) => ({
+      type,
+      sessionId: item.sessionId,
+      status: item.status,
+      role: item?.config?.role || "Software Engineer",
+      difficulty: item?.config?.difficulty || "medium",
+      overallScore: item?.results?.overallScore || 0,
+      grade: item?.results?.grade || "N/A",
+      questionsAnswered: item?.results?.questionsAnswered || 0,
+      totalDuration: item?.results?.totalDuration || 0,
+      startedAt: item.startedAt || null,
+      completedAt: item.completedAt || null,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    });
+
+    const combinedSessionsRaw = [
+      ...resumeSessions.map((item) => mapSessionToItem(item, "resume")),
+      ...documentSessions.map((item) => mapSessionToItem(item, "document")),
+      ...((user.interviewHistory || []).map((item) => ({
+        type: item.type || "other",
+        sessionId: item.sessionId || "",
+        status: item.status || "completed",
+        role: item.role || "",
+        difficulty: item.difficulty || "medium",
+        overallScore: item.overallScore || 0,
+        grade: item.grade || "N/A",
+        questionsAnswered: item.questionCount || 0,
+        totalDuration: item.durationSeconds || 0,
+        startedAt: item.startedAt || null,
+        completedAt: item.completedAt || null,
+        createdAt: item.completedAt || item.startedAt || null,
+        updatedAt: item.completedAt || item.startedAt || null,
+      })) || []),
+    ];
+
+    const deduped = new Map();
+    for (const session of combinedSessionsRaw) {
+      const key = `${session.type || "other"}:${session.sessionId || ""}:${session.status || "unknown"}`;
+      const existing = deduped.get(key);
+      if (!existing) {
+        deduped.set(key, session);
+        continue;
+      }
+      const existingTime = new Date(
+        existing.completedAt || existing.updatedAt || existing.createdAt || 0,
+      ).getTime();
+      const currentTime = new Date(
+        session.completedAt || session.updatedAt || session.createdAt || 0,
+      ).getTime();
+      if (currentTime > existingTime) {
+        deduped.set(key, session);
+      }
+    }
+
+    const combinedSessions = [...deduped.values()]
+      .sort((a, b) => {
+        const at = new Date(
+          a.completedAt || a.updatedAt || a.createdAt || 0,
+        ).getTime();
+        const bt = new Date(
+          b.completedAt || b.updatedAt || b.createdAt || 0,
+        ).getTime();
+        return bt - at;
+      })
+      .slice(0, 200);
+
+    const ongoing = combinedSessions.filter((s) => s.status === "in-progress");
+    const completed = combinedSessions.filter((s) => s.status === "completed");
+
+    res.json({
+      user,
+      interviewData: {
+        currentInterview: user.currentInterview || null,
+        ongoing,
+        all: combinedSessions,
+        completedCount: completed.length,
+      },
+    });
+  } catch (err) {
+    console.error("Admin user profile error:", err.message);
+    res.status(500).json({ error: "Failed to load user profile" });
   }
 });
 

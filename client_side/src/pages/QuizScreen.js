@@ -167,11 +167,18 @@ export default function QuizScreen() {
       if (user) {
         try {
           const xpRes = await recordQuiz({
+            sessionId,
             topic,
             difficulty,
             accuracy: res.data.accuracy,
             score: res.data.score,
             totalQuestions: res.data.totalQuestions,
+            speedScore: res.data.speedScore,
+            finalScore: res.data.finalScore,
+            weakTopics: res.data.weakTopics,
+            strongTopics: res.data.strongTopics,
+            nextDifficulty: res.data.nextDifficulty,
+            detailedResults: res.data.detailedResults,
           });
           xpData = xpRes.data;
           updateUser(xpData.user);

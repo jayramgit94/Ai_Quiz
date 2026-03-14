@@ -725,7 +725,26 @@ export default function ResumeInterview() {
       // Record interview for XP/achievements
       if (user) {
         try {
-          const xpRes = await recordInterview({ role, difficulty });
+          const xpRes = await recordInterview({
+            sessionId,
+            interviewType: "resume",
+            role,
+            difficulty,
+            status: "completed",
+            overallScore: data?.results?.overallScore || 0,
+            grade: data?.results?.grade || "N/A",
+            questionCount: data?.results?.questionsAnswered || responses.length,
+            durationSeconds: data?.results?.totalDuration || 0,
+            completedAt: new Date().toISOString(),
+            questionDetails: (data?.responses || []).map((item, idx) => ({
+              questionIndex: idx,
+              question: item?.question,
+              transcript: item?.transcript,
+              referenceAnswer: item?.referenceAnswer,
+              evaluation: item?.evaluation,
+              duration: item?.duration || 0,
+            })),
+          });
           updateUser(xpRes.data.user);
           toast.success(`+${xpRes.data.xpEarned} XP earned!`);
           if (xpRes.data.newAchievements?.length) {

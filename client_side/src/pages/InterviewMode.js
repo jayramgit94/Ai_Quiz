@@ -10,7 +10,12 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { startInterview, submitInterviewAnswer } from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import {
+  recordInterview,
+  startInterview,
+  submitInterviewAnswer,
+} from "../services/api";
 import "./InterviewMode.css";
 
 const PHASE = {
@@ -36,6 +41,7 @@ function hasMeaningfulAnswer(text, level = "medium") {
 
 export default function InterviewMode() {
   const navigate = useNavigate();
+  const { user, updateUser } = useAuth();
 
   const [phase, setPhase] = useState(PHASE.SETUP);
   const [topic, setTopic] = useState("");
@@ -74,6 +80,7 @@ export default function InterviewMode() {
   const handleStopAnswerRef = useRef(null);
   const answerTextRef = useRef("");
   const interimTranscriptRef = useRef("");
+  const profileRecordedRef = useRef(false);
 
   useEffect(() => {
     answerTextRef.current = answerText;
@@ -320,6 +327,7 @@ export default function InterviewMode() {
       setCurrentQuestion(res.data.currentQuestion);
       setQuestionNumber(res.data.questionNumber || 1);
       setHistory([]);
+      profileRecordedRef.current = false;
       setReviewData(null);
       setPendingNextQuestion(null);
       setWarnings([]);
@@ -467,6 +475,53 @@ export default function InterviewMode() {
 
   const progress = (questionNumber / Math.max(maxQuestions, 1)) * 100;
   const timerPercent = (timer / Math.max(timePerQuestion, 1)) * 100;
+
+  useEffect(() => {
+    const syncToProfile = async () => {
+      if (phase !== PHASE.RESULTS) return;
+      if (!user || !history.length || profileRecordedRef.current) return;
+
+      profileRecordedRef.current = true;
+      try {
+        const overall = avg("score");
+        const res = await recordInterview({
+          sessionId,
+          interviewType: "live",
+          role: `Live Topic: ${topic}`,
+          difficulty,
+          status: "completed",
+          overallScore: overall,
+          grade:
+            overall >= 85
+              ? "A"
+              : overall >= 70
+                ? "B"
+                : overall >= 55
+                  ? "C"
+                  : "D",
+          questionCount: history.length,
+          durationSeconds: history.reduce(
+            (sum, item) => sum + (item.duration || 0),
+            0,
+          ),
+          completedAt: new Date().toISOString(),
+          questionDetails: history.map((item, index) => ({
+            questionIndex: index,
+            question: item.question,
+            transcript: item.userAnswer,
+            referenceAnswer: item.referenceAnswer,
+            evaluation: item.evaluation,
+            duration: item.duration || 0,
+          })),
+        });
+        updateUser(res.data.user);
+      } catch {
+        // no-op
+      }
+    };
+
+    syncToProfile();
+  }, [phase, user, history, sessionId, topic, difficulty, updateUser]);
 
   if (phase === PHASE.SETUP) {
     return (

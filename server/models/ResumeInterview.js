@@ -38,6 +38,7 @@ const questionResponseSchema = new mongoose.Schema({
 const resumeInterviewSchema = new mongoose.Schema(
   {
     sessionId: { type: String, required: true, unique: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     userName: { type: String, required: true },
 
     // Resume data
@@ -146,6 +147,7 @@ const resumeInterviewSchema = new mongoose.Schema(
 );
 
 resumeInterviewSchema.index({ userName: 1, createdAt: -1 });
+resumeInterviewSchema.index({ userId: 1, createdAt: -1 });
 // Auto-delete incomplete sessions after 7 days
 resumeInterviewSchema.index(
   { createdAt: 1 },

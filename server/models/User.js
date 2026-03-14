@@ -9,6 +9,103 @@ const achievementSchema = new mongoose.Schema({
   unlockedAt: { type: Date, default: Date.now },
 });
 
+const quizQuestionHistorySchema = new mongoose.Schema(
+  {
+    questionIndex: Number,
+    question: String,
+    options: [String],
+    selectedAnswer: String,
+    correctAnswer: String,
+    isCorrect: Boolean,
+    confidence: String,
+    timeTaken: Number,
+    explanation: String,
+    interviewTip: String,
+    topic: String,
+    difficulty: String,
+  },
+  { _id: false },
+);
+
+const quizHistorySchema = new mongoose.Schema(
+  {
+    sessionId: { type: String, default: "" },
+    topic: { type: String, default: "" },
+    difficulty: { type: String, default: "medium" },
+    score: { type: Number, default: 0 },
+    totalQuestions: { type: Number, default: 0 },
+    accuracy: { type: Number, default: 0 },
+    speedScore: { type: Number, default: 0 },
+    finalScore: { type: Number, default: 0 },
+    weakTopics: [String],
+    strongTopics: [String],
+    nextDifficulty: { type: String, default: "medium" },
+    questionDetails: [quizQuestionHistorySchema],
+    completedAt: { type: Date, default: Date.now },
+  },
+  { _id: false },
+);
+
+const interviewHistorySchema = new mongoose.Schema(
+  {
+    sessionId: { type: String, default: "" },
+    type: {
+      type: String,
+      enum: ["resume", "document", "live", "other"],
+      default: "other",
+    },
+    role: { type: String, default: "" },
+    difficulty: { type: String, default: "medium" },
+    status: {
+      type: String,
+      enum: ["in-progress", "completed", "abandoned"],
+      default: "completed",
+    },
+    overallScore: { type: Number, default: 0 },
+    grade: { type: String, default: "N/A" },
+    questionCount: { type: Number, default: 0 },
+    durationSeconds: { type: Number, default: 0 },
+    questionDetails: [
+      {
+        questionIndex: Number,
+        question: String,
+        userAnswer: String,
+        referenceAnswer: String,
+        score: Number,
+        relevance: Number,
+        accuracy: Number,
+        communication: Number,
+        semanticSimilarity: Number,
+        feedback: String,
+        duration: Number,
+      },
+    ],
+    startedAt: Date,
+    completedAt: Date,
+  },
+  { _id: false },
+);
+
+const currentInterviewSchema = new mongoose.Schema(
+  {
+    sessionId: { type: String, default: "" },
+    type: {
+      type: String,
+      enum: ["resume", "document", "live", "other"],
+      default: "other",
+    },
+    role: { type: String, default: "" },
+    difficulty: { type: String, default: "medium" },
+    status: {
+      type: String,
+      enum: ["uploading", "parsing", "ready", "in-progress"],
+      default: "uploading",
+    },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false },
+);
+
 const userSchema = new mongoose.Schema(
   {
     email: {
@@ -58,6 +155,13 @@ const userSchema = new mongoose.Schema(
         topic: String,
       },
     ],
+
+    // Attempt history
+    quizHistory: [quizHistorySchema],
+
+    // Interview tracking
+    interviewHistory: [interviewHistorySchema],
+    currentInterview: { type: currentInterviewSchema, default: null },
   },
   { timestamps: true },
 );

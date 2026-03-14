@@ -30,6 +30,7 @@ const documentResponseSchema = new mongoose.Schema({
 const documentInterviewSchema = new mongoose.Schema(
   {
     sessionId: { type: String, required: true, unique: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     userName: { type: String, required: true },
     sourceDocument: {
       fileName: String,
@@ -104,6 +105,7 @@ const documentInterviewSchema = new mongoose.Schema(
 );
 
 documentInterviewSchema.index({ userName: 1, createdAt: -1 });
+documentInterviewSchema.index({ userId: 1, createdAt: -1 });
 documentInterviewSchema.index(
   { createdAt: 1 },
   {

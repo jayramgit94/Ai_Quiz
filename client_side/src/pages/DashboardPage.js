@@ -3,12 +3,17 @@ import {
   BookMarked,
   BookOpen,
   CheckCircle,
+  ClipboardList,
+  Clock3,
   Flame,
+  Layers3,
   Map,
+  Mic,
+  Sparkles,
   Target,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -29,6 +34,74 @@ export default function DashboardPage() {
   const [progress, setProgress] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [activityFilter, setActivityFilter] = useState("all");
+
+  const quizHistory = useMemo(() => progress?.quizHistory || [], [progress]);
+  const interviewHistory = useMemo(
+    () => progress?.interviewHistory || [],
+    [progress],
+  );
+  const currentInterview = progress?.currentInterview || null;
+
+  const formatDateTime = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleString();
+  };
+
+  const formatDuration = (seconds) => {
+    const total = Math.max(0, Number(seconds) || 0);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
+
+  const activityFeed = useMemo(() => {
+    const quizItems = quizHistory.map((item, index) => ({
+      id: `quiz-${item.sessionId || index}`,
+      kind: "quiz",
+      title: item.topic || "Quiz Attempt",
+      subtitle: `${item.difficulty || "medium"} quiz`,
+      scoreLabel: `${item.score || 0}/${item.totalQuestions || 0}`,
+      accuracyLabel: `${item.accuracy || 0}% accuracy`,
+      timestamp: item.completedAt,
+      payload: item,
+    }));
+
+    const interviewItems = interviewHistory.map((item, index) => ({
+      id: `interview-${item.sessionId || index}`,
+      kind: "interview",
+      title: item.role || `${item.type || "Interview"} interview`,
+      subtitle: `${(item.type || "interview").toUpperCase()} · ${item.difficulty || "medium"}`,
+      scoreLabel: `${item.overallScore || 0}/100`,
+      accuracyLabel: item.grade ? `Grade ${item.grade}` : "Interview record",
+      timestamp: item.completedAt || item.startedAt,
+      payload: item,
+    }));
+
+    return [...quizItems, ...interviewItems].sort((a, b) => {
+      const at = new Date(a.timestamp || 0).getTime();
+      const bt = new Date(b.timestamp || 0).getTime();
+      return bt - at;
+    });
+  }, [quizHistory, interviewHistory]);
+
+  const filteredActivityFeed = useMemo(() => {
+    if (activityFilter === "quiz") {
+      return activityFeed.filter((item) => item.kind === "quiz");
+    }
+    if (activityFilter === "interview") {
+      return activityFeed.filter((item) => item.kind === "interview");
+    }
+    return activityFeed;
+  }, [activityFeed, activityFilter]);
+
+  const lastActivity = activityFeed[0] || null;
+  const bestInterviewScore = interviewHistory.reduce(
+    (best, item) => Math.max(best, Number(item.overallScore) || 0),
+    0,
+  );
 
   useEffect(() => {
     if (user) {
@@ -228,6 +301,348 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            <div className="card activity-card animate-fade-in-up delay-3">
+              <div className="activity-head">
+                <div>
+                  <h3>
+                    <ClipboardList
+                      size={16}
+                      style={{
+                        display: "inline",
+                        verticalAlign: "middle",
+                        marginRight: 6,
+                      }}
+                    />
+                    Activity Center
+                  </h3>
+                  <p className="activity-sub">
+                    Professional view of every quiz and interview attempt,
+                    including results, questions, and answers.
+                  </p>
+                </div>
+                <div className="activity-filter-group">
+                  <button
+                    className={`activity-filter ${activityFilter === "all" ? "active" : ""}`}
+                    onClick={() => setActivityFilter("all")}
+                  >
+                    All
+                  </button>
+                  <button
+                    className={`activity-filter ${activityFilter === "quiz" ? "active" : ""}`}
+                    onClick={() => setActivityFilter("quiz")}
+                  >
+                    Quizzes
+                  </button>
+                  <button
+                    className={`activity-filter ${activityFilter === "interview" ? "active" : ""}`}
+                    onClick={() => setActivityFilter("interview")}
+                  >
+                    Interviews
+                  </button>
+                </div>
+              </div>
+
+              <div className="activity-summary-grid">
+                <div className="activity-summary-card">
+                  <span className="activity-summary-icon">
+                    <Layers3 size={16} />
+                  </span>
+                  <strong>{activityFeed.length}</strong>
+                  <span>Total Records</span>
+                </div>
+                <div className="activity-summary-card">
+                  <span className="activity-summary-icon">
+                    <BookOpen size={16} />
+                  </span>
+                  <strong>{quizHistory.length}</strong>
+                  <span>Quiz Attempts</span>
+                </div>
+                <div className="activity-summary-card">
+                  <span className="activity-summary-icon">
+                    <Mic size={16} />
+                  </span>
+                  <strong>{interviewHistory.length}</strong>
+                  <span>Interview Attempts</span>
+                </div>
+                <div className="activity-summary-card">
+                  <span className="activity-summary-icon">
+                    <Sparkles size={16} />
+                  </span>
+                  <strong>{bestInterviewScore}</strong>
+                  <span>Best Interview Score</span>
+                </div>
+              </div>
+
+              {currentInterview && (
+                <div className="activity-current">
+                  <strong>Current activity:</strong>{" "}
+                  {currentInterview.type || "interview"} ·{" "}
+                  {currentInterview.status || "in-progress"} ·{" "}
+                  {currentInterview.role || "-"} ·{" "}
+                  {currentInterview.difficulty || "medium"}
+                </div>
+              )}
+
+              {lastActivity ? (
+                <>
+                  <div className="activity-latest">
+                    <span className="activity-latest-label">Latest record</span>
+                    <strong>{lastActivity.title}</strong>
+                    <span>
+                      {lastActivity.subtitle} · {lastActivity.scoreLabel} ·{" "}
+                      {lastActivity.accuracyLabel}
+                    </span>
+                    <small>{formatDateTime(lastActivity.timestamp)}</small>
+                  </div>
+
+                  <div className="activity-timeline">
+                    <h4>
+                      <Clock3
+                        size={14}
+                        style={{
+                          display: "inline",
+                          verticalAlign: "middle",
+                          marginRight: 5,
+                        }}
+                      />
+                      Recent Timeline
+                    </h4>
+                    {filteredActivityFeed.length ? (
+                      <div className="activity-feed-list">
+                        {filteredActivityFeed.slice(0, 12).map((item) => (
+                          <div key={item.id} className="activity-feed-item">
+                            <div
+                              className={`activity-feed-marker ${item.kind === "quiz" ? "quiz" : "interview"}`}
+                            />
+                            <div className="activity-feed-content">
+                              <div className="activity-feed-topline">
+                                <strong>{item.title}</strong>
+                                <small>{formatDateTime(item.timestamp)}</small>
+                              </div>
+                              <div className="activity-feed-meta">
+                                <span>{item.subtitle}</span>
+                                <span>{item.scoreLabel}</span>
+                                <span>{item.accuracyLabel}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="activity-empty">
+                        No activity for this filter.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="activity-detail-grid">
+                    <div className="activity-section">
+                      <h4>
+                        <BookOpen
+                          size={14}
+                          style={{
+                            display: "inline",
+                            verticalAlign: "middle",
+                            marginRight: 5,
+                          }}
+                        />
+                        Quiz Records ({quizHistory.length})
+                      </h4>
+                      {quizHistory.length ? (
+                        <div className="activity-list">
+                          {quizHistory
+                            .slice()
+                            .reverse()
+                            .map((item, idx) => (
+                              <details
+                                key={`${item.sessionId || "quiz"}-${idx}`}
+                                className="activity-item"
+                              >
+                                <summary>
+                                  <span>
+                                    {item.topic || "Topic"} ·{" "}
+                                    {item.difficulty || "medium"} · Result{" "}
+                                    {item.score || 0}/{item.totalQuestions || 0}
+                                  </span>
+                                  <small>
+                                    {formatDateTime(item.completedAt)}
+                                  </small>
+                                </summary>
+                                <div className="activity-item-body">
+                                  <div className="activity-chip-row">
+                                    <span className="badge badge-primary">
+                                      Accuracy {item.accuracy || 0}%
+                                    </span>
+                                    <span className="badge badge-warning">
+                                      Final {item.finalScore || 0}
+                                    </span>
+                                    <span className="badge badge-success">
+                                      Next {item.nextDifficulty || "-"}
+                                    </span>
+                                  </div>
+                                  {(item.questionDetails || []).map(
+                                    (q, qIdx) => (
+                                      <div
+                                        key={`${q.questionIndex || qIdx}-${qIdx}`}
+                                        className={`qa-row ${q.isCorrect ? "correct" : "wrong"}`}
+                                      >
+                                        <div className="qa-q">
+                                          Q{qIdx + 1}: {q.question || "-"}
+                                        </div>
+                                        <div className="qa-answer-grid">
+                                          <div className="qa-a">
+                                            Your answer:{" "}
+                                            <strong>
+                                              {q.selectedAnswer || "-"}
+                                            </strong>
+                                          </div>
+                                          <div className="qa-a">
+                                            Correct answer:{" "}
+                                            <strong>
+                                              {q.correctAnswer || "-"}
+                                            </strong>
+                                          </div>
+                                        </div>
+                                        <div className="qa-meta">
+                                          {q.isCorrect
+                                            ? "Correct"
+                                            : "Incorrect"}{" "}
+                                          · Confidence{" "}
+                                          {q.confidence || "medium"} · Time{" "}
+                                          {formatDuration(q.timeTaken || 0)}
+                                        </div>
+                                        {q.explanation && (
+                                          <p className="qa-note">
+                                            {q.explanation}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                              </details>
+                            ))}
+                        </div>
+                      ) : (
+                        <p className="activity-empty">No quiz history yet.</p>
+                      )}
+                    </div>
+
+                    <div className="activity-section">
+                      <h4>
+                        <Mic
+                          size={14}
+                          style={{
+                            display: "inline",
+                            verticalAlign: "middle",
+                            marginRight: 5,
+                          }}
+                        />
+                        Interview Records ({interviewHistory.length})
+                      </h4>
+                      {interviewHistory.length ? (
+                        <div className="activity-list">
+                          {interviewHistory
+                            .slice()
+                            .reverse()
+                            .map((item, idx) => (
+                              <details
+                                key={`${item.sessionId || "interview"}-${idx}`}
+                                className="activity-item"
+                              >
+                                <summary>
+                                  <span>
+                                    {(item.type || "interview").toUpperCase()} ·{" "}
+                                    {item.role || "-"} · Score{" "}
+                                    {item.overallScore || 0}/100
+                                  </span>
+                                  <small>
+                                    {formatDateTime(
+                                      item.completedAt || item.startedAt,
+                                    )}
+                                  </small>
+                                </summary>
+                                <div className="activity-item-body">
+                                  <div className="activity-chip-row">
+                                    <span className="badge badge-primary">
+                                      Grade {item.grade || "N/A"}
+                                    </span>
+                                    <span className="badge badge-warning">
+                                      Duration{" "}
+                                      {formatDuration(item.durationSeconds)}
+                                    </span>
+                                    <span className="badge badge-success">
+                                      Questions {item.questionCount || 0}
+                                    </span>
+                                  </div>
+                                  {(item.questionDetails || []).map(
+                                    (q, qIdx) => (
+                                      <div
+                                        key={`${q.questionIndex || qIdx}-${qIdx}`}
+                                        className="qa-row"
+                                      >
+                                        <div className="qa-q">
+                                          Q{qIdx + 1}: {q.question || "-"}
+                                        </div>
+                                        <div className="qa-a qa-long-answer">
+                                          Candidate answer:{" "}
+                                          {q.userAnswer || "-"}
+                                        </div>
+                                        {q.referenceAnswer && (
+                                          <div className="qa-ref">
+                                            Reference: {q.referenceAnswer}
+                                          </div>
+                                        )}
+                                        <div className="qa-meta qa-score-grid">
+                                          <span>Score {q.score || 0}</span>
+                                          <span>
+                                            Relevance {q.relevance || 0}
+                                          </span>
+                                          <span>
+                                            Accuracy {q.accuracy || 0}
+                                          </span>
+                                          <span>
+                                            Communication {q.communication || 0}
+                                          </span>
+                                          <span>
+                                            Semantic {q.semanticSimilarity || 0}
+                                          </span>
+                                        </div>
+                                        {q.feedback && (
+                                          <p className="qa-note">
+                                            {q.feedback}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                              </details>
+                            ))}
+                        </div>
+                      ) : (
+                        <p className="activity-empty">
+                          No interview history yet.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="activity-empty-state">
+                  <div className="activity-empty-icon">
+                    <ClipboardList size={26} />
+                  </div>
+                  <h4>No detailed activity found yet</h4>
+                  <p>
+                    Your full quiz and interview records will appear here as
+                    soon as history is available from saved sessions or new
+                    attempts.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Topic Heatmap */}
             {progress?.topicHistory?.length > 0 && (
               <div className="card heatmap-card animate-fade-in-up delay-3">
@@ -256,59 +671,27 @@ export default function DashboardPage() {
                         ? Math.round((t.totalCorrect / t.totalQuestions) * 100)
                         : 0;
                     return (
-                      <div
-                        key={i}
-                        className="heatmap-row animate-fade-in-up"
-                        style={{ animationDelay: `${i * 0.1}s` }}
-                      >
-                        <div className="heatmap-topic">
+                      <div key={i} className="heatmap-row">
+                        <div>
                           <span className="heatmap-name">{t.topic}</span>
                           <span className="heatmap-meta">
-                            {t.quizCount} quizzes · {acc}% accuracy
+                            {t.quizCount || 0} quizzes · {t.totalCorrect || 0}/
+                            {t.totalQuestions || 0} correct
                           </span>
                         </div>
                         <div className="heatmap-track">
                           <div
-                            className="heatmap-bar"
-                            style={{
-                              width: `${width}%`,
-                              background:
-                                acc >= 70
-                                  ? "linear-gradient(90deg, #58CC02, #46A302)"
-                                  : acc >= 50
-                                    ? "linear-gradient(90deg, #FFB020, #E09000)"
-                                    : "linear-gradient(90deg, #FF4B4B, #E03C3C)",
-                            }}
+                            className="progress-bar-fill"
+                            style={{ width: `${width}%` }}
                           />
                         </div>
-                        <span className="heatmap-diff badge badge-primary">
-                          {t.lastDifficulty}
-                        </span>
+                        <div className="heatmap-diff">
+                          <strong>{acc}%</strong>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            )}
-
-            {(!progress?.topicHistory ||
-              progress.topicHistory.length === 0) && (
-              <div
-                className="card empty-state animate-fade-in-up"
-                style={{ textAlign: "center", padding: 48 }}
-              >
-                <div style={{ marginBottom: 12, color: "var(--text-muted)" }}>
-                  <BookOpen size={40} />
-                </div>
-                <h3>No Data Yet</h3>
-                <p>Take some quizzes to see your progress here!</p>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => navigate("/setup")}
-                  style={{ marginTop: 20 }}
-                >
-                  Start a Quiz →
-                </button>
               </div>
             )}
           </>

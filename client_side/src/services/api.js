@@ -151,4 +151,18 @@ export const getAdminOverview = (token) =>
     },
   });
 
+export const getAdminUsers = (token) =>
+  api.get("/admin/users", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+export const getAdminUserProfile = (token, userId) =>
+  api.get(`/admin/users/${encodeURIComponent(userId)}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
 export default api;
