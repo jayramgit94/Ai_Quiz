@@ -31,6 +31,8 @@ const questionResponseSchema = new mongoose.Schema({
     feedback: { type: String, default: "" },
     strengths: [String],
     improvements: [String],
+    suggestions: [String],
+    hrTips: [String],
   },
   answeredAt: { type: Date, default: Date.now },
 });

@@ -92,6 +92,7 @@ router.post("/answer", async (req, res) => {
       evaluation,
       feedback: evaluation.feedback,
       guidance: evaluation.guidance,
+      hrTips: evaluation.hrTips,
       referenceAnswer: evaluation.referenceAnswer,
       semanticSimilarity: evaluation.semanticSimilarity,
       topicCoverage: evaluation.topicCoverage,

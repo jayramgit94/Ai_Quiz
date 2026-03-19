@@ -23,6 +23,16 @@ app.use(compression());
 
 const isDev = process.env.NODE_ENV !== "production";
 
+// Trust reverse proxy in production-style deployments so rate limiting
+// can identify client IP correctly via X-Forwarded-For.
+if (process.env.TRUST_PROXY === "true") {
+  app.set("trust proxy", true);
+} else if (process.env.TRUST_PROXY === "false") {
+  app.set("trust proxy", false);
+} else if (!isDev || Boolean(process.env.VERCEL)) {
+  app.set("trust proxy", 1);
+}
+
 // Build allowed origins: localhost:* in dev + explicit CLIENT_URL(s) in prod
 // CLIENT_URL supports comma-separated list: CLIENT_URL=https://a.vercel.app,https://b.vercel.app
 // VERCEL_URL is auto-injected by Vercel on every deployment (no https:// prefix)

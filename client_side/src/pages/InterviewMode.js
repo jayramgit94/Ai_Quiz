@@ -415,6 +415,7 @@ export default function InterviewMode() {
         coveredTopics: res.data.coveredTopics || [],
         matchedKeyTerms: res.data.matchedKeyTerms || [],
         missingKeyTerms: res.data.missingKeyTerms || [],
+        hrTips: res.data.hrTips || res.data.evaluation?.hrTips || [],
         duration: timer,
       };
 
@@ -1021,6 +1022,17 @@ export default function InterviewMode() {
                   ))}
                 </ul>
               </div>
+
+              {!!(reviewData.hrTips || []).length && (
+                <div className="explanation-box">
+                  <div className="exp-header">Professional HR Tips</div>
+                  <ul className="interview-guidance-list">
+                    {(reviewData.hrTips || []).map((tip, idx) => (
+                      <li key={idx}>{tip}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <button
                 className="btn btn-primary btn-block"

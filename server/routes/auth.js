@@ -262,7 +262,7 @@ router.post("/record-quiz", authMiddleware, async (req, res) => {
           totalQuestions: normalizedTotalQuestions,
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -441,7 +441,7 @@ router.post("/record-interview", authMiddleware, async (req, res) => {
     const user = await User.findByIdAndUpdate(
       req.userId,
       { $inc: { totalInterviews: 1 } },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!user) return res.status(404).json({ error: "User not found" });
 

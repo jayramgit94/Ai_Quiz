@@ -22,6 +22,7 @@ const documentResponseSchema = new mongoose.Schema({
     strengths: [String],
     missingKeyPoints: [String],
     suggestions: [String],
+    hrTips: [String],
     feedback: { type: String, default: "" },
   },
   answeredAt: { type: Date, default: Date.now },

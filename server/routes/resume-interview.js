@@ -15,7 +15,6 @@ const {
   generateInterviewSummary,
   generateDocumentIdealAnswer,
 } = require("../services/grokService");
-const { compareAnswers } = require("../utils/documentInterview");
 
 const router = express.Router();
 
@@ -322,8 +321,6 @@ router.post("/evaluate-answer", authMiddleware, async (req, res) => {
         "Give a structured answer with definition, reasoning, and an example.";
     }
 
-    const similarity = compareAnswers(safeTranscript, referenceAnswer);
-
     // Evaluate with AI
     const evaluation = await evaluateSpokenAnswer(
       question.question,
@@ -332,13 +329,6 @@ router.post("/evaluate-answer", authMiddleware, async (req, res) => {
       question.category,
       session.config?.difficulty || "medium",
     );
-
-    const mergedEvaluation = {
-      ...evaluation,
-      semanticSimilarity: similarity.semanticSimilarity,
-      matchedKeyTerms: similarity.matchedKeyTerms,
-      missingKeyTerms: similarity.missingKeyTerms,
-    };
 
     // Store response
     const response = {
@@ -351,7 +341,7 @@ router.post("/evaluate-answer", authMiddleware, async (req, res) => {
       duration: duration || 0,
       referenceSource,
       referenceAnswer,
-      evaluation: mergedEvaluation,
+      evaluation,
     };
 
     // Check if already answered (update) or new
@@ -368,7 +358,7 @@ router.post("/evaluate-answer", authMiddleware, async (req, res) => {
 
     res.json({
       questionIndex,
-      evaluation: mergedEvaluation,
+      evaluation,
       referenceSource,
       referenceAnswer,
       answeredCount: session.responses.length,

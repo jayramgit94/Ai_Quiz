@@ -15,7 +15,6 @@ const {
   generateDocumentInterviewSummary,
 } = require("../services/grokService");
 const {
-  compareAnswers,
   mergeExtractedQuestionAnswers,
   parseQuestionAnswerDocument,
 } = require("../utils/documentInterview");
@@ -310,15 +309,11 @@ router.post("/evaluate-answer", authMiddleware, async (req, res) => {
       referenceAnswer = generated.idealAnswer || "";
     }
 
-    const similarity = compareAnswers(safeTranscript, referenceAnswer);
-
     const evaluation = await evaluateDocumentInterviewAnswer({
       question: question.question,
       userAnswer: safeTranscript,
       referenceAnswer,
       referenceSource,
-      semanticSimilarity: similarity.semanticSimilarity,
-      missingTerms: similarity.missingKeyTerms,
       difficulty: session.config?.difficulty || "medium",
     });
 
@@ -331,9 +326,6 @@ router.post("/evaluate-answer", authMiddleware, async (req, res) => {
       referenceAnswer,
       evaluation: {
         ...evaluation,
-        semanticSimilarity: similarity.semanticSimilarity,
-        matchedKeyTerms: similarity.matchedKeyTerms,
-        missingKeyTerms: similarity.missingKeyTerms,
       },
     };
 
@@ -354,8 +346,8 @@ router.post("/evaluate-answer", authMiddleware, async (req, res) => {
       evaluation: response.evaluation,
       referenceSource,
       referenceAnswer,
-      matchedKeyTerms: similarity.matchedKeyTerms,
-      missingKeyTerms: similarity.missingKeyTerms,
+      matchedKeyTerms: response.evaluation?.matchedKeyTerms || [],
+      missingKeyTerms: response.evaluation?.missingKeyTerms || [],
       answeredCount: session.responses.length,
       totalQuestions: session.questions.length,
     });

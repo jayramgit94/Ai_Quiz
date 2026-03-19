@@ -1,5 +1,4 @@
 const axios = require("axios");
-const { compareAnswers } = require("../utils/documentInterview");
 
 // Sanitize control characters that break JSON.parse
 function sanitizeJsonString(str) {
@@ -356,6 +355,32 @@ function getStrictnessConfig(difficulty = "medium") {
   return { minWords: 2, blendWeight: 0.68 };
 }
 
+function getDifficultyHrRubric(difficulty = "medium") {
+  const level = String(difficulty || "medium").toLowerCase();
+
+  if (level === "easy") {
+    return [
+      "Use a supportive and coaching tone.",
+      "Reward core understanding over advanced terminology.",
+      "Allow partially structured answers if meaning is clear.",
+    ].join("\n");
+  }
+
+  if (level === "hard") {
+    return [
+      "Use strict senior-HR + technical-panel standards.",
+      "Require depth, trade-offs, and practical examples.",
+      "Penalize vague claims and missing reasoning.",
+    ].join("\n");
+  }
+
+  return [
+    "Use professional mid-level interview standards.",
+    "Expect clear structure, relevant concepts, and one practical anchor.",
+    "Be fair on language imperfections if meaning is correct.",
+  ].join("\n");
+}
+
 function countWords(text) {
   return String(text || "")
     .trim()
@@ -403,25 +428,23 @@ async function evaluateLiveInterviewAnswer({
     expectedAnswer && expectedAnswer.trim().length >= 10
       ? expectedAnswer.trim()
       : generatedReference;
-  const similarity = compareAnswers(safeAnswer, referenceAnswer);
 
   const expectedTopicList = Array.isArray(expectedTopics)
     ? expectedTopics.filter(Boolean).map((t) => String(t).trim())
     : [];
-
-  const loweredAnswer = safeAnswer.toLowerCase();
-  const coveredTopics = expectedTopicList.filter((topicItem) =>
-    loweredAnswer.includes(topicItem.toLowerCase()),
-  );
-  const topicCoverage = expectedTopicList.length
-    ? Math.round((coveredTopics.length / expectedTopicList.length) * 100)
-    : 0;
+  const hrRubric = getDifficultyHrRubric(difficulty);
 
   const prompt = `You are evaluating a spoken interview response.
+
+Act as a PROFESSIONAL HUMAN HR INTERVIEWER with technical understanding.
+You must evaluate semantic meaning, not exact wording. If grammar is imperfect but intent is correct, score fairly.
 
 TOPIC: ${topic}
 DIFFICULTY: ${difficulty}
 QUESTION #${questionNumber}: ${question}
+
+DIFFICULTY HR RUBRIC:
+${hrRubric}
 
 REFERENCE ANSWER:
 ${referenceAnswer}
@@ -432,25 +455,27 @@ ${expectedTopicList.join(", ") || "none"}
 CANDIDATE ANSWER:
 ${safeAnswer}
 
-DETERMINISTIC SIGNAL:
-- Semantic similarity: ${similarity.semanticSimilarity}/100
-- Missing key terms: ${similarity.missingKeyTerms.join(", ") || "none"}
-- Topic coverage: ${topicCoverage}/100
-
 Return ONLY valid JSON:
 {
   "score": 0-100,
   "relevance": 0-100,
   "depth": 0-100,
   "communication": 0-100,
-  "feedback": "short interview-style feedback paragraph",
-  "guidance": ["actionable suggestion 1", "actionable suggestion 2", "actionable suggestion 3"]
+  "semanticSimilarity": 0-100,
+  "topicCoverage": 0-100,
+  "coveredTopics": ["covered topic 1", "covered topic 2"],
+  "matchedKeyTerms": ["concept understood 1", "concept understood 2"],
+  "missingKeyTerms": ["missed concept 1", "missed concept 2"],
+  "feedback": "professional HR feedback paragraph",
+  "guidance": ["actionable suggestion 1", "actionable suggestion 2", "actionable suggestion 3"],
+  "hrTips": ["interview delivery tip 1", "interview delivery tip 2"]
 }
 
 Rules:
 1) Do not hallucinate facts not present in candidate answer.
-2) Keep feedback practical and encouraging.
-3) Respect deterministic signal.`;
+2) Keep feedback practical and professional.
+3) Be strictness-aware by difficulty.
+4) Prefer concept-level matching over keyword matching.`;
 
   let parsed;
   try {
@@ -461,8 +486,16 @@ Rules:
     parsed = {};
   }
 
+  const semanticSimilarity = Math.min(
+    100,
+    Math.max(0, Number(parsed.semanticSimilarity || 0)),
+  );
+  const topicCoverage = Math.min(
+    100,
+    Math.max(0, Number(parsed.topicCoverage || 0)),
+  );
   const signalScore = Math.round(
-    similarity.semanticSimilarity * 0.75 + topicCoverage * 0.25,
+    semanticSimilarity * 0.7 + topicCoverage * 0.3,
   );
   const rawScore = Number(parsed.score || signalScore || 0);
   const blended = Math.round(
@@ -481,12 +514,18 @@ Rules:
       100,
       Math.max(0, Number(parsed.communication || Math.max(blended - 3, 0))),
     ),
-    semanticSimilarity: similarity.semanticSimilarity,
+    semanticSimilarity,
     topicCoverage,
-    coveredTopics,
+    coveredTopics: Array.isArray(parsed.coveredTopics)
+      ? parsed.coveredTopics.slice(0, 8)
+      : [],
     referenceAnswer,
-    matchedKeyTerms: similarity.matchedKeyTerms,
-    missingKeyTerms: similarity.missingKeyTerms,
+    matchedKeyTerms: Array.isArray(parsed.matchedKeyTerms)
+      ? parsed.matchedKeyTerms.slice(0, 8)
+      : [],
+    missingKeyTerms: Array.isArray(parsed.missingKeyTerms)
+      ? parsed.missingKeyTerms.slice(0, 8)
+      : [],
     feedback:
       parsed.feedback ||
       "Good attempt. Improve structure: answer directly, explain reasoning, and give a concrete example.",
@@ -496,6 +535,12 @@ Rules:
           "Answer with a 3-part structure: core concept, implementation, and example.",
           "Use precise technical vocabulary for the topic.",
           "Highlight trade-offs and edge cases where relevant.",
+        ],
+    hrTips: Array.isArray(parsed.hrTips)
+      ? parsed.hrTips.slice(0, 4)
+      : [
+          "Start with a clear one-line answer, then expand.",
+          "Keep your tone confident and avoid over-explaining basics.",
         ],
   };
 }
@@ -757,16 +802,7 @@ async function evaluateSpokenAnswer(
   const expectedTopicList = Array.isArray(expectedTopics)
     ? expectedTopics.filter(Boolean).map((item) => String(item).trim())
     : [];
-  const loweredAnswer = normalizedTranscript.toLowerCase();
-  const matchedTopics = expectedTopicList.filter((item) =>
-    loweredAnswer.includes(item.toLowerCase()),
-  );
-  const missingTopics = expectedTopicList.filter(
-    (item) => !matchedTopics.includes(item),
-  );
-  const topicCoverage = expectedTopicList.length
-    ? Math.round((matchedTopics.length / expectedTopicList.length) * 100)
-    : 0;
+  const hrRubric = getDifficultyHrRubric(difficulty);
 
   if (countWords(normalizedTranscript) < strictness.minWords) {
     return {
@@ -774,26 +810,32 @@ async function evaluateSpokenAnswer(
       relevance: 0,
       depth: 0,
       communication: 0,
-      topicCoverage,
-      matchedTopics,
-      missingTopics,
+      topicCoverage: 0,
+      semanticSimilarity: 0,
+      matchedTopics: [],
+      missingTopics: expectedTopicList,
+      matchedKeyTerms: [],
+      missingKeyTerms: [],
       feedback:
         "No meaningful answer was provided. Try to articulate your thoughts even if unsure.",
       strengths: [],
       improvements: ["Provide a verbal answer to the question"],
+      suggestions: [
+        "Use a 3-step format: direct answer, reasoning, and short example.",
+      ],
+      hrTips: ["Pause 1-2 seconds before answering to organize your points."],
     };
   }
 
-  const prompt = `You are an expert interview evaluator. Rate this candidate's spoken answer.
+  const prompt = `You are an expert interview evaluator acting as a PROFESSIONAL HUMAN HR interviewer.
+Evaluate semantic meaning, not exact wording.
 
 QUESTION: ${question}
 CATEGORY: ${category}
 DIFFICULTY: ${difficulty}
 EXPECTED TOPICS TO COVER: ${expectedTopics.join(", ")}
-DETERMINISTIC SIGNALS:
-- Topic coverage: ${topicCoverage}/100
-- Matched topics: ${matchedTopics.join(", ") || "none"}
-- Missing topics: ${missingTopics.join(", ") || "none"}
+DIFFICULTY HR RUBRIC:
+${hrRubric}
 
 CANDIDATE'S ANSWER (transcribed from speech):
 "${normalizedTranscript}"
@@ -805,8 +847,13 @@ Evaluate the answer on these criteria (0-100 each):
 
 Also provide:
 - An overall score (0-100, weighted average)
+- Semantic similarity to expected intent (0-100)
+- Topic coverage (0-100)
+- Matched and missing topics based on meaning
 - 2-3 specific strengths
 - 2-3 areas to improve
+- 2-3 actionable interview coaching suggestions
+- 1-3 HR delivery tips
 - Detailed feedback paragraph
 
 Return ONLY valid JSON:
@@ -815,9 +862,17 @@ Return ONLY valid JSON:
   "relevance": 80,
   "depth": 70,
   "communication": 75,
+  "semanticSimilarity": 72,
+  "topicCoverage": 68,
+  "matchedTopics": ["topic A", "topic B"],
+  "missingTopics": ["topic C"],
+  "matchedKeyTerms": ["concept 1", "concept 2"],
+  "missingKeyTerms": ["concept 3"],
   "feedback": "Detailed feedback paragraph...",
   "strengths": ["Strength 1", "Strength 2"],
-  "improvements": ["Improvement 1", "Improvement 2"]
+  "improvements": ["Improvement 1", "Improvement 2"],
+  "suggestions": ["Suggestion 1", "Suggestion 2"],
+  "hrTips": ["Tip 1", "Tip 2"]
 }`;
 
   const raw = await callGrok([{ role: "user", content: prompt }], 2048);
@@ -834,12 +889,30 @@ Return ONLY valid JSON:
       relevance: Math.min(100, Math.max(0, parsed.relevance || 0)),
       depth: Math.min(100, Math.max(0, parsed.depth || 0)),
       communication: Math.min(100, Math.max(0, parsed.communication || 0)),
-      topicCoverage,
-      matchedTopics,
-      missingTopics,
+      topicCoverage: Math.min(100, Math.max(0, parsed.topicCoverage || 0)),
+      semanticSimilarity: Math.min(
+        100,
+        Math.max(0, parsed.semanticSimilarity || 0),
+      ),
+      matchedTopics: Array.isArray(parsed.matchedTopics)
+        ? parsed.matchedTopics.slice(0, 8)
+        : [],
+      missingTopics: Array.isArray(parsed.missingTopics)
+        ? parsed.missingTopics.slice(0, 8)
+        : expectedTopicList,
+      matchedKeyTerms: Array.isArray(parsed.matchedKeyTerms)
+        ? parsed.matchedKeyTerms.slice(0, 8)
+        : [],
+      missingKeyTerms: Array.isArray(parsed.missingKeyTerms)
+        ? parsed.missingKeyTerms.slice(0, 8)
+        : [],
       feedback: parsed.feedback || "Evaluation complete.",
       strengths: parsed.strengths || [],
       improvements: parsed.improvements || [],
+      suggestions: Array.isArray(parsed.suggestions)
+        ? parsed.suggestions.slice(0, 4)
+        : [],
+      hrTips: Array.isArray(parsed.hrTips) ? parsed.hrTips.slice(0, 4) : [],
     };
   } catch {
     const match = cleaned.match(/\{[\s\S]*\}/);
@@ -850,12 +923,30 @@ Return ONLY valid JSON:
         relevance: Math.min(100, Math.max(0, p.relevance || 0)),
         depth: Math.min(100, Math.max(0, p.depth || 0)),
         communication: Math.min(100, Math.max(0, p.communication || 0)),
-        topicCoverage,
-        matchedTopics,
-        missingTopics,
+        topicCoverage: Math.min(100, Math.max(0, p.topicCoverage || 0)),
+        semanticSimilarity: Math.min(
+          100,
+          Math.max(0, p.semanticSimilarity || 0),
+        ),
+        matchedTopics: Array.isArray(p.matchedTopics)
+          ? p.matchedTopics.slice(0, 8)
+          : [],
+        missingTopics: Array.isArray(p.missingTopics)
+          ? p.missingTopics.slice(0, 8)
+          : expectedTopicList,
+        matchedKeyTerms: Array.isArray(p.matchedKeyTerms)
+          ? p.matchedKeyTerms.slice(0, 8)
+          : [],
+        missingKeyTerms: Array.isArray(p.missingKeyTerms)
+          ? p.missingKeyTerms.slice(0, 8)
+          : [],
         feedback: p.feedback || "Evaluation complete.",
         strengths: p.strengths || [],
         improvements: p.improvements || [],
+        suggestions: Array.isArray(p.suggestions)
+          ? p.suggestions.slice(0, 4)
+          : [],
+        hrTips: Array.isArray(p.hrTips) ? p.hrTips.slice(0, 4) : [],
       };
     }
     return {
@@ -863,12 +954,20 @@ Return ONLY valid JSON:
       relevance: 50,
       depth: 50,
       communication: 50,
-      topicCoverage,
-      matchedTopics,
-      missingTopics,
+      topicCoverage: 50,
+      semanticSimilarity: 50,
+      matchedTopics: [],
+      missingTopics: expectedTopicList,
+      matchedKeyTerms: [],
+      missingKeyTerms: [],
       feedback: "Could not fully evaluate the answer. Please try again.",
       strengths: [],
       improvements: [],
+      suggestions: [
+        "Give a clear opening line before adding details.",
+        "Cover at least two core concepts from the question.",
+      ],
+      hrTips: ["Keep your answer concise first, then expand if asked."],
     };
   }
 }
@@ -1046,22 +1145,25 @@ async function evaluateDocumentInterviewAnswer({
   userAnswer,
   referenceAnswer,
   referenceSource,
-  semanticSimilarity,
-  missingTerms = [],
   difficulty = "medium",
 }) {
   const strictness = getStrictnessConfig(difficulty);
+  const hrRubric = getDifficultyHrRubric(difficulty);
   if (countWords(userAnswer) < strictness.minWords) {
     return {
       score: 0,
       relevance: 0,
       accuracy: 0,
       communicationClarity: 0,
+      semanticSimilarity: 0,
+      matchedKeyTerms: [],
+      missingKeyTerms: [],
       strengths: [],
       missingKeyPoints: ["No meaningful answer was provided."],
       suggestions: [
         "Speak your response with key concepts and concrete points.",
       ],
+      hrTips: ["Use a brief headline sentence before details."],
       feedback:
         "No meaningful response detected. Try answering with a structured explanation and examples.",
     };
@@ -1080,9 +1182,10 @@ ${referenceAnswer}
 USER ANSWER:
 ${userAnswer}
 
-DETERMINISTIC SIGNALS:
-- Semantic similarity score: ${semanticSimilarity}/100
-- Missing key terms detected: ${missingTerms.join(", ") || "none"}
+DIFFICULTY HR RUBRIC:
+${hrRubric}
+
+Act as a professional HR interviewer. Score based on meaning and interview quality, not exact phrase matching.
 
 Return ONLY valid JSON:
 {
@@ -1090,22 +1193,30 @@ Return ONLY valid JSON:
   "relevance": 0-100,
   "accuracy": 0-100,
   "communicationClarity": 0-100,
+  "semanticSimilarity": 0-100,
+  "matchedKeyTerms": ["concept understood 1", "concept understood 2"],
+  "missingKeyTerms": ["missed concept 1", "missed concept 2"],
   "strengths": ["strength 1", "strength 2"],
   "missingKeyPoints": ["point 1", "point 2"],
   "suggestions": ["suggestion 1", "suggestion 2"],
+  "hrTips": ["delivery tip 1", "delivery tip 2"],
   "feedback": "one concise paragraph"
 }
 
 Rules:
-1) Align with deterministic similarity signal.
-2) Avoid hallucinations. Do not invent facts not present in the user answer.
-3) Keep suggestions actionable and specific.`;
+1) Avoid hallucinations. Do not invent facts not present in the user answer.
+2) Keep suggestions actionable and specific.
+3) Be strictness-aware by difficulty.`;
 
   const raw = await callGrok([{ role: "user", content: prompt }], 1800);
 
   try {
     const parsed = parseJsonFromAi(raw);
     const baseScore = Number(parsed.score || 0);
+    const semanticSimilarity = Math.min(
+      100,
+      Math.max(0, Number(parsed.semanticSimilarity || 0)),
+    );
     const blendedScore = Math.round(
       baseScore * strictness.blendWeight +
         semanticSimilarity * (1 - strictness.blendWeight),
@@ -1119,25 +1230,37 @@ Rules:
         100,
         Math.max(0, Number(parsed.communicationClarity || 0)),
       ),
+      semanticSimilarity,
+      matchedKeyTerms: Array.isArray(parsed.matchedKeyTerms)
+        ? parsed.matchedKeyTerms.slice(0, 8)
+        : [],
+      missingKeyTerms: Array.isArray(parsed.missingKeyTerms)
+        ? parsed.missingKeyTerms.slice(0, 8)
+        : [],
       strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
       missingKeyPoints: Array.isArray(parsed.missingKeyPoints)
         ? parsed.missingKeyPoints
         : [],
       suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+      hrTips: Array.isArray(parsed.hrTips) ? parsed.hrTips.slice(0, 4) : [],
       feedback: parsed.feedback || "Evaluation complete.",
     };
   } catch {
     return {
-      score: semanticSimilarity,
-      relevance: semanticSimilarity,
-      accuracy: semanticSimilarity,
+      score: 50,
+      relevance: 50,
+      accuracy: 50,
       communicationClarity: 60,
+      semanticSimilarity: 50,
+      matchedKeyTerms: [],
+      missingKeyTerms: [],
       strengths: [],
-      missingKeyPoints: missingTerms.slice(0, 4),
+      missingKeyPoints: [],
       suggestions: [
-        "Improve coverage of key concepts from the expected answer.",
+        "Improve coverage of the key concepts in the expected answer.",
         "Use a clearer structure: definition, reasoning, and example.",
       ],
+      hrTips: ["Answer in a calm pace and close with a concise summary."],
       feedback: "Automatic fallback evaluation used due to parsing failure.",
     };
   }
