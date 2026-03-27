@@ -16,6 +16,12 @@ const reviewRoutes = require("./routes/reviews");
 const adminRoutes = require("./routes/admin");
 
 const app = express();
+app.disable("x-powered-by");
+
+// In serverless environments, fail fast instead of buffering DB operations
+// while disconnected (prevents 10s buffering timeouts in request handlers).
+mongoose.set("bufferCommands", false);
+mongoose.set("bufferTimeoutMS", 0);
 
 // ─── SECURITY MIDDLEWARE ───
 app.use(helmet());
@@ -75,25 +81,105 @@ app.use(
 );
 
 // Rate limiting
+const apiRateLimitMax = Number(
+  process.env.API_RATE_LIMIT_MAX || (isDev ? 2000 : 600),
+);
+const aiRateLimitMax = Number(process.env.AI_RATE_LIMIT_MAX || (isDev ? 240 : 80));
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,
+  max: apiRateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path === "/health",
   message: { error: "Too many requests, please try again later" },
 });
 app.use("/api/", limiter);
 
+// Separate limiter for expensive AI-driven endpoints.
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: aiRateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many AI requests. Please retry in a moment." },
+});
+app.use("/api/quiz/generate", aiLimiter);
+app.use("/api/interview", aiLimiter);
+app.use("/api/resume-interview", aiLimiter);
+app.use("/api/document-interview", aiLimiter);
+
 // Stricter rate limit for auth endpoints
+const authRateLimitMax = Number(process.env.AUTH_RATE_LIMIT_MAX || 20);
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: authRateLimitMax,
   message: { error: "Too many auth attempts, please try again later" },
 });
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 
 app.use(express.json({ limit: "10mb" }));
+
+// Guard against hung requests so processes do not pile up under load.
+const requestTimeoutMs = Number(process.env.REQUEST_TIMEOUT_MS || 290000);
+app.use((req, res, next) => {
+  res.setTimeout(requestTimeoutMs, () => {
+    if (!res.headersSent) {
+      res.status(503).json({ error: "Request timed out. Please retry." });
+    }
+  });
+  next();
+});
+
+const MONGODB_URI =
+  process.env.MONGODB_URI || "mongodb://localhost:27017/ai_quiz";
+
+let mongoConnectPromise = null;
+
+async function connectDB() {
+  const state = mongoose.connection.readyState;
+  if (state === 1) return mongoose.connection;
+  if (state === 2 && mongoConnectPromise) return mongoConnectPromise;
+
+  if (!mongoConnectPromise) {
+    mongoConnectPromise = mongoose
+      .connect(MONGODB_URI, {
+        serverSelectionTimeoutMS: Number(
+          process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || 15000,
+        ),
+        socketTimeoutMS: Number(process.env.MONGODB_SOCKET_TIMEOUT_MS || 45000),
+        maxPoolSize: Number(process.env.MONGODB_MAX_POOL_SIZE || 10),
+        minPoolSize: Number(process.env.MONGODB_MIN_POOL_SIZE || 1),
+      })
+      .then((conn) => {
+        console.log("✅ MongoDB connected");
+        return conn;
+      })
+      .catch((err) => {
+        mongoConnectPromise = null;
+        throw err;
+      });
+  }
+
+  return mongoConnectPromise;
+}
+
+// Ensure DB is connected before handling API routes (except health endpoint).
+app.use("/api", async (req, res, next) => {
+  if (req.path === "/health") return next();
+
+  try {
+    await connectDB();
+    return next();
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err.message);
+    return res.status(503).json({
+      error: "Database is temporarily unavailable. Please retry shortly.",
+    });
+  }
+});
 
 // ─── ROUTES ───
 app.use("/api/auth", authRoutes);
@@ -106,7 +192,13 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/admin", adminRoutes);
 
 // ─── HEALTH CHECK ───
-app.get("/api/health", (req, res) => {
+app.get("/api/health", async (req, res) => {
+  try {
+    await connectDB();
+  } catch {
+    // Health endpoint should still respond even when DB is unavailable.
+  }
+
   const dbState = mongoose.connection.readyState;
   // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
   const dbStatus = dbState === 1 ? "connected" : "disconnected";
@@ -130,27 +222,18 @@ app.use((err, req, res, _next) => {
 
 // ─── MONGODB + START ───
 const PORT = process.env.PORT || 5000;
-const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://localhost:27017/ai_quiz";
-
-async function connectDB() {
-  if (mongoose.connection.readyState === 1) return;
-  try {
-    await mongoose.connect(MONGODB_URI);
-    console.log("✅ MongoDB connected");
-  } catch (err) {
-    console.error("❌ MongoDB connection error:", err.message);
-  }
-}
 
 // Connect on import (for serverless warm starts)
-connectDB();
+connectDB().catch((err) => {
+  console.error("❌ Initial MongoDB connect error:", err.message);
+});
 
 // Only start listening when run directly (not on Vercel)
 if (!process.env.VERCEL) {
-  connectDB().then(() => {
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    connectDB().catch((err) => {
+      console.error("❌ MongoDB connection error:", err.message);
     });
   });
 }

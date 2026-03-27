@@ -7,6 +7,7 @@ const ResumeInterview = require("../models/ResumeInterview");
 const DocumentInterview = require("../models/DocumentInterview");
 const { generateQuizQuestions } = require("../services/grokService");
 const { validateQuestionSet } = require("../utils/validation");
+const { cacheResponse, invalidateByPrefix } = require("../utils/responseCache");
 const { authMiddleware } = require("./auth");
 
 const router = express.Router();
@@ -34,6 +35,23 @@ const DAILY_TOPICS = [
   "Cloud Computing",
   "Cybersecurity",
 ];
+
+const dailyChallengeInFlight = new Map();
+
+function withDailyChallengeLock(dateKey, handler) {
+  if (dailyChallengeInFlight.has(dateKey)) {
+    return dailyChallengeInFlight.get(dateKey);
+  }
+
+  const promise = Promise.resolve()
+    .then(handler)
+    .finally(() => {
+      dailyChallengeInFlight.delete(dateKey);
+    });
+
+  dailyChallengeInFlight.set(dateKey, promise);
+  return promise;
+}
 
 function getUtcDayOfYear(date = new Date()) {
   const year = date.getUTCFullYear();
@@ -216,6 +234,11 @@ router.post("/add", authMiddleware, async (req, res) => {
       date: new Date(),
     });
 
+    // Invalidate leaderboard cache views after score updates.
+    invalidateByPrefix("/api/leaderboard/today");
+    invalidateByPrefix("/api/leaderboard/all");
+    invalidateByPrefix("/api/leaderboard/topic/");
+
     res.json({ success: true, entry });
   } catch (err) {
     console.error("Leaderboard add error:", err.message);
@@ -225,7 +248,7 @@ router.post("/add", authMiddleware, async (req, res) => {
 
 // ─── GET /api/leaderboard/today ───
 // Get today's leaderboard
-router.get("/today", async (req, res) => {
+router.get("/today", cacheResponse(10000), async (req, res) => {
   try {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -244,7 +267,7 @@ router.get("/today", async (req, res) => {
 
 // ─── GET /api/leaderboard/all ───
 // Get all-time leaderboard
-router.get("/all", async (req, res) => {
+router.get("/all", cacheResponse(10000), async (req, res) => {
   try {
     const entries = await LeaderboardEntry.find()
       .sort({ finalScore: -1 })
@@ -260,7 +283,12 @@ router.get("/all", async (req, res) => {
 
 // ─── GET /api/leaderboard/topic/:topic ───
 // Get leaderboard for specific topic
-router.get("/topic/:topic", async (req, res) => {
+router.get(
+  "/topic/:topic",
+  cacheResponse(12000, (req) =>
+    `/api/leaderboard/topic/${String(req.params.topic || "").toLowerCase()}`,
+  ),
+  async (req, res) => {
   try {
     const topic = String(req.params.topic || "").trim();
     if (!topic || topic.length > 100) {
@@ -279,7 +307,8 @@ router.get("/topic/:topic", async (req, res) => {
     console.error("Topic leaderboard error:", err.message);
     res.json([]);
   }
-});
+},
+);
 
 // ─── GET /api/leaderboard/progress/by-name/:userName ───
 // Get user's learning progress / dashboard data
@@ -499,62 +528,69 @@ router.get("/progress/me", authMiddleware, async (req, res) => {
 
 // ─── GET /api/leaderboard/daily-challenge ───
 // Get or generate today's daily challenge
-router.get("/daily-challenge", async (req, res) => {
+router.get("/daily-challenge", cacheResponse(15000), async (req, res) => {
   try {
     const today = new Date().toISOString().split("T")[0]; // "YYYY-MM-DD"
 
-    // Check if today's challenge already exists
-    let challenge;
-    try {
-      challenge = await DailyChallenge.findOne({ date: today });
-    } catch (dbErr) {
-      console.warn("DB read for daily challenge failed:", dbErr.message);
-    }
+    const challengePayload = await withDailyChallengeLock(today, async () => {
+      // Check if today's challenge already exists
+      let challenge;
+      try {
+        challenge = await DailyChallenge.findOne({ date: today }).lean();
+      } catch (dbErr) {
+        console.warn("DB read for daily challenge failed:", dbErr.message);
+      }
 
-    if (challenge) {
-      return res.json({
-        topic: challenge.topic,
-        difficulty: challenge.difficulty,
-        questions: challenge.questions,
+      if (challenge) {
+        return {
+          topic: challenge.topic,
+          difficulty: challenge.difficulty,
+          questions: challenge.questions,
+          date: today,
+        };
+      }
+
+      // Generate new daily challenge
+      // Pick a random topic based on day of year for consistency
+      const dayOfYear = getUtcDayOfYear();
+      const topicIndex = dayOfYear % DAILY_TOPICS.length;
+      const topic = DAILY_TOPICS[topicIndex];
+      const difficulty = "medium";
+      const count = 5;
+
+      const rawQuestions = await generateQuizQuestions(topic, difficulty, count);
+      const { validQuestions } = validateQuestionSet(rawQuestions);
+
+      if (validQuestions.length === 0) {
+        throw new Error("Failed to generate daily challenge");
+      }
+
+      // Upsert protects against duplicate writes under concurrent traffic.
+      const savedChallenge = await DailyChallenge.findOneAndUpdate(
+        { date: today },
+        {
+          $setOnInsert: {
+            date: today,
+            topic,
+            difficulty,
+            questions: validQuestions,
+          },
+        },
+        {
+          upsert: true,
+          returnDocument: "after",
+        },
+      ).lean();
+
+      return {
+        topic: savedChallenge.topic,
+        difficulty: savedChallenge.difficulty,
+        questions: savedChallenge.questions,
         date: today,
-      });
-    }
-
-    // Generate new daily challenge
-    // Pick a random topic based on day of year for consistency
-    const dayOfYear = getUtcDayOfYear();
-    const topicIndex = dayOfYear % DAILY_TOPICS.length;
-    const topic = DAILY_TOPICS[topicIndex];
-    const difficulty = "medium";
-    const count = 5;
-
-    const rawQuestions = await generateQuizQuestions(topic, difficulty, count);
-    const { validQuestions } = validateQuestionSet(rawQuestions);
-
-    if (validQuestions.length === 0) {
-      return res
-        .status(500)
-        .json({ error: "Failed to generate daily challenge" });
-    }
-
-    // Save to DB
-    try {
-      challenge = await DailyChallenge.create({
-        date: today,
-        topic,
-        difficulty,
-        questions: validQuestions,
-      });
-    } catch (dbErr) {
-      console.warn("DB save for daily challenge failed:", dbErr.message);
-    }
-
-    res.json({
-      topic,
-      difficulty,
-      questions: validQuestions,
-      date: today,
+      };
     });
+
+    res.json(challengePayload);
   } catch (err) {
     console.error("Daily challenge error:", err.message);
     res.status(500).json({ error: "Failed to load daily challenge" });

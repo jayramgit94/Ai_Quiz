@@ -2,10 +2,11 @@ const express = require("express");
 const Review = require("../models/Review");
 const User = require("../models/User");
 const { authMiddleware } = require("./auth");
+const { cacheResponse, invalidateByPrefix } = require("../utils/responseCache");
 
 const router = express.Router();
 
-router.get("/hero", async (req, res) => {
+router.get("/hero", cacheResponse(20000), async (req, res) => {
   try {
     const reviews = await Review.find({})
       .select("displayName rating note createdAt")
@@ -57,6 +58,9 @@ router.post("/", authMiddleware, async (req, res) => {
       rating: safeRating,
       note: cleanedNote,
     });
+
+    // Keep hero reviews fresh after a new publish.
+    invalidateByPrefix("/api/reviews/hero");
 
     res.status(201).json({
       review: {
