@@ -9,6 +9,10 @@ const ResumeInterview = require("../models/ResumeInterview");
 const User = require("../models/User");
 const { authMiddleware } = require("./auth");
 const {
+  requireSessionOwner,
+  sanitizeResumeSessionForClient,
+} = require("../utils/sessionHelpers");
+const {
   parseResumeContent,
   generateResumeQuestions,
   evaluateSpokenAnswer,
@@ -210,6 +214,7 @@ router.post("/generate-questions", authMiddleware, async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    if (!requireSessionOwner(session, req.userId, res)) return;
 
     if (!session.resume?.parsed) {
       return res.status(400).json({ error: "Resume not yet parsed" });
@@ -285,6 +290,7 @@ router.post("/evaluate-answer", authMiddleware, async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    if (!requireSessionOwner(session, req.userId, res)) return;
 
     const minWords = getMinWordsForDifficulty(session.config?.difficulty);
     if (!safeTranscript || wordCount < minWords) {
@@ -381,6 +387,7 @@ router.post("/anti-cheat", authMiddleware, async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    if (!requireSessionOwner(session, req.userId, res)) return;
 
     if (type === "tab-switch") {
       session.antiCheating.tabSwitches += 1;
@@ -416,6 +423,7 @@ router.post("/complete", authMiddleware, async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    if (!requireSessionOwner(session, req.userId, res)) return;
 
     // Calculate scores
     const responses = session.responses || [];
@@ -505,7 +513,7 @@ router.post("/complete", authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════
 // GET /session/:sessionId - Get session data
 // ═══════════════════════════════════════════════════════════
-router.get("/session/:sessionId", async (req, res) => {
+router.get("/session/:sessionId", authMiddleware, async (req, res) => {
   try {
     const session = await ResumeInterview.findOne({
       sessionId: req.params.sessionId,
@@ -513,7 +521,8 @@ router.get("/session/:sessionId", async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
-    res.json(session);
+    if (!requireSessionOwner(session, req.userId, res)) return;
+    res.json(sanitizeResumeSessionForClient(session, { full: true }));
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch session" });
   }
@@ -522,10 +531,19 @@ router.get("/session/:sessionId", async (req, res) => {
 // ═══════════════════════════════════════════════════════════
 // GET /history/:userName - Get user's interview history
 // ═══════════════════════════════════════════════════════════
-router.get("/history/:userName", async (req, res) => {
+router.get("/history/:userName", authMiddleware, async (req, res) => {
   try {
+    const user = await User.findById(req.userId).select("displayName").lean();
+    const requested = String(req.params.userName || "").trim();
+    if (
+      !user?.displayName ||
+      user.displayName.toLowerCase() !== requested.toLowerCase()
+    ) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
     const sessions = await ResumeInterview.find({
-      userName: req.params.userName,
+      userId: req.userId,
       status: "completed",
     })
       .sort({ completedAt: -1 })

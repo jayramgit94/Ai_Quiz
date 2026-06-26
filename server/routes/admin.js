@@ -4,12 +4,20 @@ const User = require("../models/User");
 const Review = require("../models/Review");
 const ResumeInterview = require("../models/ResumeInterview");
 const DocumentInterview = require("../models/DocumentInterview");
+const QuizSession = require("../models/QuizSession");
+const LeaderboardEntry = require("../models/LeaderboardEntry");
 
 const router = express.Router();
 
 const JWT_SECRET = String(process.env.JWT_SECRET || "").trim();
-const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || "admin").trim();
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "@123456").trim();
+const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || "").trim();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
+
+if (process.env.NODE_ENV === "production" && (!ADMIN_USERNAME || !ADMIN_PASSWORD)) {
+  console.warn(
+    "ADMIN_USERNAME and ADMIN_PASSWORD must be set in production for admin access.",
+  );
+}
 
 if (!JWT_SECRET && process.env.NODE_ENV !== "production") {
   console.warn("JWT_SECRET is not set. Using development fallback secret.");
@@ -62,10 +70,11 @@ router.get("/status", (req, res) => {
 
 router.get("/overview", adminAuth, async (req, res) => {
   try {
-    const [users, reviews] = await Promise.all([
+    const [users, reviews, quizSessionsToday, ongoingResume, ongoingDocument, leaderboardToday] =
+      await Promise.all([
       User.find({})
         .select(
-          "displayName email xp level streak totalQuizzes totalInterviews bestAccuracy totalCorrect totalQuestions updatedAt createdAt",
+          "displayName email xp level streak totalQuizzes totalInterviews bestAccuracy totalCorrect totalQuestions updatedAt createdAt currentInterview",
         )
         .sort({ updatedAt: -1 })
         .lean(),
@@ -73,6 +82,15 @@ router.get("/overview", adminAuth, async (req, res) => {
         .select("displayName rating note createdAt")
         .sort({ createdAt: -1 })
         .lean(),
+      QuizSession.countDocuments({
+        completed: true,
+        updatedAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+      }),
+      ResumeInterview.countDocuments({ status: "in-progress" }),
+      DocumentInterview.countDocuments({ status: "in-progress" }),
+      LeaderboardEntry.countDocuments({
+        date: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+      }),
     ]);
 
     const now = Date.now();
@@ -144,6 +162,8 @@ router.get("/overview", adminAuth, async (req, res) => {
       createdAt: item.createdAt,
     }));
 
+    const usersWithLiveActivity = users.filter((u) => u.currentInterview?.sessionId);
+
     res.json({
       summary: {
         totalUsers: users.length,
@@ -154,7 +174,19 @@ router.get("/overview", adminAuth, async (req, res) => {
         overallAccuracy,
         totalReviews: reviews.length,
         averageReviewRating: avgReviewRating,
+        quizzesCompletedToday: quizSessionsToday,
+        leaderboardEntriesToday: leaderboardToday,
+        ongoingInterviews: ongoingResume + ongoingDocument,
+        ongoingResumeInterviews: ongoingResume,
+        ongoingDocumentInterviews: ongoingDocument,
+        usersInLiveSession: usersWithLiveActivity.length,
       },
+      liveActivity: usersWithLiveActivity.slice(0, 12).map((u) => ({
+        displayName: u.displayName,
+        email: u.email,
+        currentInterview: u.currentInterview,
+        updatedAt: u.updatedAt,
+      })),
       topUsers,
       recentUsers,
       recentReviews,
@@ -208,12 +240,12 @@ router.get("/users/:userId", adminAuth, async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const [resumeSessions, documentSessions] = await Promise.all([
+    const [resumeSessions, documentSessions, quizSessions] = await Promise.all([
       ResumeInterview.find({
         $or: [{ userId: user._id }, { userName: user.displayName }],
       })
         .select(
-          "sessionId status config role userName startedAt completedAt createdAt updatedAt results responses",
+          "sessionId status config userName startedAt completedAt createdAt updatedAt results responses antiCheating",
         )
         .sort({ createdAt: -1 })
         .limit(80)
@@ -222,10 +254,20 @@ router.get("/users/:userId", adminAuth, async (req, res) => {
         $or: [{ userId: user._id }, { userName: user.displayName }],
       })
         .select(
-          "sessionId status config role userName startedAt completedAt createdAt updatedAt results responses",
+          "sessionId status config userName startedAt completedAt createdAt updatedAt results responses antiCheating",
         )
         .sort({ createdAt: -1 })
         .limit(80)
+        .lean(),
+      QuizSession.find({
+        $or: [{ userId: user._id }, { userName: user.displayName }],
+        completed: true,
+      })
+        .select(
+          "sessionId topic difficulty score accuracy speedScore finalScore totalQuestions weakTopics strongTopics createdAt updatedAt",
+        )
+        .sort({ updatedAt: -1 })
+        .limit(50)
         .lean(),
     ]);
 
@@ -239,6 +281,9 @@ router.get("/users/:userId", adminAuth, async (req, res) => {
       grade: item?.results?.grade || "N/A",
       questionsAnswered: item?.results?.questionsAnswered || 0,
       totalDuration: item?.results?.totalDuration || 0,
+      tabSwitches: item?.antiCheating?.tabSwitches || 0,
+      fullscreenExits: item?.antiCheating?.fullscreenExits || 0,
+      warningsCount: (item?.antiCheating?.warnings || []).length,
       startedAt: item.startedAt || null,
       completedAt: item.completedAt || null,
       createdAt: item.createdAt,
@@ -301,6 +346,20 @@ router.get("/users/:userId", adminAuth, async (req, res) => {
 
     res.json({
       user,
+      quizData: {
+        recentQuizzes: quizSessions.map((q) => ({
+          sessionId: q.sessionId,
+          topic: q.topic,
+          difficulty: q.difficulty,
+          score: q.score,
+          accuracy: q.accuracy,
+          finalScore: q.finalScore,
+          totalQuestions: q.totalQuestions,
+          weakTopics: q.weakTopics || [],
+          strongTopics: q.strongTopics || [],
+          completedAt: q.updatedAt,
+        })),
+      },
       interviewData: {
         currentInterview: user.currentInterview || null,
         ongoing,

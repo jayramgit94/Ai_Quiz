@@ -1,3 +1,37 @@
+const { normalizeAnswerLetter } = require("./sessionHelpers");
+
+/**
+ * Server-authoritative grading — never trust client isCorrect.
+ */
+function gradeAnswersFromSession(questions, rawAnswers = []) {
+  const answerMap = new Map(
+    (Array.isArray(rawAnswers) ? rawAnswers : []).map((a) => [
+      Number(a.questionIndex),
+      a,
+    ]),
+  );
+
+  return questions.map((q, index) => {
+    const incoming = answerMap.get(index) || {};
+    const selectedLetter = normalizeAnswerLetter(incoming.selectedAnswer);
+    const correctLetter = normalizeAnswerLetter(q.correctAnswer);
+    const isCorrect =
+      Boolean(selectedLetter) &&
+      Boolean(correctLetter) &&
+      selectedLetter === correctLetter;
+
+    return {
+      questionIndex: index,
+      selectedAnswer: selectedLetter || String(incoming.selectedAnswer || ""),
+      confidence: ["high", "medium", "guess"].includes(incoming.confidence)
+        ? incoming.confidence
+        : "medium",
+      timeTaken: Math.max(0, Number(incoming.timeTaken) || 0),
+      isCorrect,
+    };
+  });
+}
+
 /**
  * Calculate quiz scores including accuracy, speed, final score,
  * confidence analysis, weak/strong topics, and next difficulty.
@@ -154,6 +188,7 @@ function calibrateDifficulty(accuracy, currentDifficulty) {
 }
 
 module.exports = {
+  gradeAnswersFromSession,
   calculateScores,
   calculateConfidenceStats,
   analyzeTopics,

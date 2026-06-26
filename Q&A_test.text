@@ -1,0 +1,43 @@
+1. Explain Your Project (60–90 seconds)
+
+"My project is an AI-powered interview preparation platform. I built it because I noticed that many students can solve questions but still struggle when they have to explain answers in a real interview.The platform helps users prepare in different ways. They can take AI-generated quizzes, practice mock interviews, upload their resume for personalized interview questions, and even upload documents to generate interview sessions based on their content.The system tracks performance such as accuracy, speed, and overall progress, so users can see where they are improving and where they need more practice.I built the frontend using React and the backend using Node.js, Express, and MongoDB. One challenge I faced was that sometimes the AI generated incorrect question formats. To solve this, I added a validation system that checks the AI response before showing it to users.Overall, the goal of the project is to make interview preparation more realistic, interactive, and personalized compared to traditional quiz platforms."
+
+2. Why Did You Build This Project? (60 seconds)
+
+"I built this project because I personally experienced the gap between studying concepts and actually performing well in interviews.Most platforms focus only on multiple-choice questions, but real interviews require communication, confidence, and the ability to explain your thinking. On the other hand, some mock interview tools do not provide enough analytics or progress tracking.I wanted to create a platform that combines both aspects. Users can practice questions, attend mock interviews, receive feedback, and track their improvement over time.Another reason was that I enjoy working with AI and wanted to build something that solves a real problem for students like me. During development, I learned a lot about integrating AI systems while ensuring the results remain reliable and user-friendly."
+
+3. Why React? (45–60 seconds)
+
+"I chose React because my project has many interactive screens, such as quizzes, interviews, dashboards, and leaderboards.React allows me to create reusable components, which means I can build features faster and keep the code organized. It also provides a smooth user experience because pages update without full reloads.Another reason is its large ecosystem and community support, which makes development easier.Overall, React helped me build a responsive and scalable frontend while keeping the application maintainable."
+
+4. Why Node.js? (45–60 seconds)
+
+"I selected Node.js for the backend because it handles multiple requests efficiently, which is important in my project where users interact with the database and AI services simultaneously.Using JavaScript for both frontend and backend also made development faster because I could work within the same language across the entire application.Node.js works well for applications that involve many API calls and real-time interactions, which matched the requirements of my project.It helped me build a fast and scalable backend while keeping development simple."
+
+
+5. Why MongoDB? (45–60 seconds)
+
+"I chose MongoDB because the data in my project is flexible and can change as new features are added.For example, interview sessions, quiz results, AI feedback, and user statistics can all have different structures. MongoDB stores data in a document format, which makes handling this type of information easier.It also allows me to add new fields without major database changes, which helped during development.Overall, MongoDB gave me flexibility, good performance, and faster development compared to a traditional relational database."
+
+
+6. Explain Complete Project Architecture (90 seconds)
+
+"The project follows a typical frontend-backend architecture.On the frontend, I use React to build the user interface. Users interact with pages such as quizzes, interviews, dashboards, and leaderboards.When a user performs an action, React sends a request to the backend using APIs.The backend is built with Node.js and Express. It handles authentication, business logic, database operations, and communication with AI services.User data, interview records, quiz results, and performance statistics are stored in MongoDB.The overall flow is simple: the user sends a request from the frontend, the backend processes it, retrieves or stores data in MongoDB, communicates with the AI service if required, and then sends the result back to the user.This separation makes the application easier to maintain, scale, and improve."
+
+11. What Happens When a React Component Re-renders? (60 seconds)
+
+"A React component re-renders whenever its data changes. This can happen when the component's state changes, its props change, or its parent component updates.During a re-render, React checks what has changed and updates only those specific parts of the page instead of reloading everything.For example, in my quiz application, when a user selects an answer or the timer updates, React re-renders only the affected components to keep the interface responsive.This approach improves performance and provides a smoother user experience."
+
+
+12. How Do You Avoid Unnecessary Re-renders? (60 seconds)
+
+ "To avoid unnecessary re-renders, I try to keep state only where it is needed and avoid updating components that are not affected by a change.I also use React features like React.memo, useMemo, and useCallback when appropriate.For example, in my quiz application, the timer updates every second. Instead of re-rendering the entire page, I separated the timer into its own component so only that part updates.This helps improve performance and keeps the application responsive."
+
+
+13. Why Use React Router? (45–60 seconds)
+
+ "React Router helps users navigate between different pages in a React application without refreshing the entire website.In my project, I use it to move between pages such as login, dashboard, quiz, interview, and leaderboard.This creates a faster and smoother user experience because the application behaves more like a desktop application rather than a traditional website.It also allows me to protect certain pages so only logged-in users can access them."
+
+14. What is useEffect? (60 seconds)
+
+"useEffect is a React Hook that allows us to perform actions after a component has rendered.These actions can include fetching data from an API, saving data to local storage, starting timers, or setting up event listeners.In my project, I use useEffect to load user statistics, fetch leaderboard data, and initialize settings when a page loads.A useful feature of useEffect is that it also allows cleanup, such as stopping timers or removing event listeners when the component is no longer needed."

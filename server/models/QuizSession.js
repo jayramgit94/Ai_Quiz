@@ -30,6 +30,12 @@ const answerSchema = new mongoose.Schema({
 const quizSessionSchema = new mongoose.Schema(
   {
     sessionId: { type: String, required: true, unique: true, index: true },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+      default: null,
+    },
     userName: { type: String, default: "Anonymous" },
     topic: { type: String, required: true },
     difficulty: {
@@ -57,6 +63,7 @@ const quizSessionSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+quizSessionSchema.index({ userId: 1, createdAt: -1 });
 quizSessionSchema.index({ userName: 1, createdAt: -1 });
 quizSessionSchema.index({ topic: 1 });
 

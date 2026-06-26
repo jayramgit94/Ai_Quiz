@@ -206,14 +206,14 @@ export default function LandingPage() {
       tracks: topics.length ? topics : fallbackTracks,
       statLeft: user
         ? String(myProgress?.overallStats?.totalQuizzes || 0)
-        : "4",
-      statLeftLabel: user ? "Quizzes completed" : "Practice paths",
-      statMid: user ? String(myProgress?.topicHistory?.length || 0) : "AI",
-      statMidLabel: user ? "Topics covered" : "Generated coaching",
+        : "Quiz",
+      statLeftLabel: user ? "Quizzes completed" : "Adaptive practice",
+      statMid: user ? String(myProgress?.topicHistory?.length || 0) : "Live",
+      statMidLabel: user ? "Topics covered" : "Mock interviews",
       statRight: user
         ? String(myProgress?.overallStats?.totalCorrect || 0)
-        : "∞",
-      statRightLabel: user ? "Correct answers" : "Question variety",
+        : "Track",
+      statRightLabel: user ? "Correct answers" : "Your progress",
     };
   }, [myProgress, user]);
 

@@ -119,6 +119,7 @@ const authLimiter = rateLimit({
 });
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
+app.use("/api/admin/login", authLimiter);
 
 app.use(express.json({ limit: "10mb" }));
 

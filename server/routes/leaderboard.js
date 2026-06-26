@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const LeaderboardEntry = require("../models/LeaderboardEntry");
 const DailyChallenge = require("../models/DailyChallenge");
 const User = require("../models/User");
@@ -8,6 +9,11 @@ const DocumentInterview = require("../models/DocumentInterview");
 const { generateQuizQuestions } = require("../services/grokService");
 const { validateQuestionSet } = require("../utils/validation");
 const { cacheResponse, invalidateByPrefix } = require("../utils/responseCache");
+const { stripQuizQuestionsForClient } = require("../utils/sessionHelpers");
+const {
+  gradeAnswersFromSession,
+  calculateScores,
+} = require("../utils/scoring");
 const { authMiddleware } = require("./auth");
 
 const router = express.Router();
@@ -205,32 +211,45 @@ function mapDocumentSessionToHistory(session) {
 // Add entry to leaderboard (authenticated)
 router.post("/add", authMiddleware, async (req, res) => {
   try {
-    const {
-      userName,
-      score,
-      accuracy,
-      speedScore = 0,
-      finalScore = 0,
-      topic,
-      difficulty = "medium",
-      totalQuestions = 0,
-    } = req.body;
+    const { sessionId, topic, difficulty = "medium" } = req.body;
 
-    if (!userName || score === undefined || !topic) {
+    if (!sessionId || !topic) {
       return res
         .status(400)
-        .json({ error: "userName, score, and topic are required" });
+        .json({ error: "sessionId and topic are required" });
+    }
+
+    const user = await User.findById(req.userId).select("displayName").lean();
+    if (!user?.displayName) {
+      return res.status(400).json({ error: "User profile not found" });
+    }
+
+    const QuizSession = require("../models/QuizSession");
+    const session = await QuizSession.findOne({
+      sessionId,
+      completed: true,
+    }).lean();
+
+    if (!session) {
+      return res.status(400).json({ error: "Completed quiz session not found" });
+    }
+
+    if (
+      session.userId &&
+      String(session.userId) !== String(req.userId)
+    ) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
     const entry = await LeaderboardEntry.create({
-      userName: userName.trim(),
-      score,
-      accuracy: accuracy || 0,
-      speedScore,
-      finalScore,
-      topic: topic.trim(),
-      difficulty,
-      totalQuestions,
+      userName: user.displayName.trim(),
+      score: session.score,
+      accuracy: session.accuracy,
+      speedScore: session.speedScore,
+      finalScore: session.finalScore,
+      topic: String(topic).trim(),
+      difficulty: session.difficulty || difficulty,
+      totalQuestions: session.totalQuestions,
       date: new Date(),
     });
 
@@ -545,7 +564,7 @@ router.get("/daily-challenge", cacheResponse(15000), async (req, res) => {
         return {
           topic: challenge.topic,
           difficulty: challenge.difficulty,
-          questions: challenge.questions,
+          questions: stripQuizQuestionsForClient(challenge.questions),
           date: today,
         };
       }
@@ -585,7 +604,7 @@ router.get("/daily-challenge", cacheResponse(15000), async (req, res) => {
       return {
         topic: savedChallenge.topic,
         difficulty: savedChallenge.difficulty,
-        questions: savedChallenge.questions,
+        questions: stripQuizQuestionsForClient(savedChallenge.questions),
         date: today,
       };
     });
@@ -594,6 +613,106 @@ router.get("/daily-challenge", cacheResponse(15000), async (req, res) => {
   } catch (err) {
     console.error("Daily challenge error:", err.message);
     res.status(500).json({ error: "Failed to load daily challenge" });
+  }
+});
+
+router.post("/daily-challenge/check-answer", async (req, res) => {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const { date = today, questionIndex, selectedAnswer } = req.body;
+
+    const challenge = await DailyChallenge.findOne({ date }).lean();
+    if (!challenge) {
+      return res.status(404).json({ error: "Daily challenge not found" });
+    }
+
+    const index = Number(questionIndex);
+    const question = challenge.questions[index];
+    if (!question) {
+      return res.status(400).json({ error: "Invalid question index" });
+    }
+
+    const selectedLetter = String(selectedAnswer || "")
+      .trim()
+      .charAt(0)
+      .toUpperCase();
+    const correctLetter = String(question.correctAnswer || "")
+      .trim()
+      .charAt(0)
+      .toUpperCase();
+
+    res.json({
+      isCorrect: selectedLetter === correctLetter,
+      correctAnswer: correctLetter,
+      explanation: question.explanation || "",
+      interviewTip: question.interviewTip || "",
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to check answer" });
+  }
+});
+
+router.post("/daily-challenge/submit", authMiddleware, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const { date = today, answers = [], timeTaken = 0 } = req.body;
+
+    const challenge = await DailyChallenge.findOne({ date }).lean();
+    if (!challenge) {
+      return res.status(404).json({ error: "Daily challenge not found" });
+    }
+
+    const user = await User.findById(req.userId).select("displayName").lean();
+    if (!user?.displayName) {
+      return res.status(400).json({ error: "User profile not found" });
+    }
+
+    const gradedAnswers = gradeAnswersFromSession(
+      challenge.questions,
+      answers,
+    );
+    const results = calculateScores(challenge.questions, gradedAnswers);
+
+    const sessionId = crypto.randomUUID();
+    await QuizSession.create({
+      sessionId,
+      userId: req.userId,
+      userName: user.displayName,
+      topic: `Daily: ${challenge.topic}`,
+      difficulty: challenge.difficulty,
+      questions: challenge.questions,
+      answers: gradedAnswers,
+      score: results.score,
+      totalQuestions: results.totalQuestions,
+      accuracy: results.accuracy,
+      speedScore: results.speedScore,
+      finalScore: results.finalScore,
+      weakTopics: results.weakTopics,
+      strongTopics: results.strongTopics,
+      nextDifficulty: results.nextDifficulty,
+      confidenceStats: results.confidenceStats,
+      completed: true,
+    });
+
+    await LeaderboardEntry.create({
+      userName: user.displayName,
+      score: results.score,
+      accuracy: results.accuracy,
+      speedScore: results.speedScore,
+      finalScore: results.finalScore,
+      topic: challenge.topic,
+      difficulty: challenge.difficulty,
+      totalQuestions: results.totalQuestions,
+      date: new Date(),
+    });
+
+    invalidateByPrefix("/api/leaderboard/today");
+    invalidateByPrefix("/api/leaderboard/all");
+
+    res.json({ ...results, sessionId, timeTaken });
+  } catch (err) {
+    console.error("Daily challenge submit error:", err.message);
+    res.status(500).json({ error: "Failed to submit daily challenge" });
   }
 });
 

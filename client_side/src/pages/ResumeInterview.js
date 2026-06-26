@@ -1784,6 +1784,9 @@ export default function ResumeInterview() {
       {phase === PHASE.INTERVIEW && renderInterview()}
       {phase === PHASE.EVALUATING && renderEvaluating()}
       {phase === PHASE.RESULTS && renderResults()}
+      {error && phase !== PHASE.UPLOAD && (
+        <div className="ri-error ri-error-global">{error}</div>
+      )}
     </div>
   );
 }

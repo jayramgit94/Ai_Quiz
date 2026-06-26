@@ -7,7 +7,6 @@ import {
   LogOut,
   MessageSquare,
   Moon,
-  Shield,
   Sparkles,
   SunMedium,
   Trophy,
@@ -219,19 +218,6 @@ export default function Navbar({ theme = "light", onToggleTheme }) {
                       style={{ marginRight: 7, verticalAlign: "middle" }}
                     />
                     Add Review
-                  </button>
-                  <button
-                    className="navbar-dropdown-item"
-                    onClick={() => {
-                      navigate("/admin");
-                      setProfileOpen(false);
-                    }}
-                  >
-                    <Shield
-                      size={14}
-                      style={{ marginRight: 7, verticalAlign: "middle" }}
-                    />
-                    Admin Panel
                   </button>
                   <div className="navbar-dropdown-divider" />
                   <button

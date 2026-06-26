@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { addToLeaderboard, getDailyChallenge } from "../services/api";
+import {
+  checkDailyAnswer,
+  getDailyChallenge,
+  recordQuiz,
+  submitDailyChallenge,
+} from "../services/api";
 import "./DailyChallenge.css";
 
 export default function DailyChallenge() {
@@ -13,6 +18,8 @@ export default function DailyChallenge() {
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showResult, setShowResult] = useState(false);
   const [answers, setAnswers] = useState([]);
+  const [lastResult, setLastResult] = useState(null);
+  const [confirming, setConfirming] = useState(false);
   const [finished, setFinished] = useState(false);
   const [timer, setTimer] = useState(0);
   const timerRef = useRef(null);
@@ -52,21 +59,38 @@ export default function DailyChallenge() {
     setSelectedAnswer(letter);
   };
 
-  const handleConfirm = () => {
-    if (!selectedAnswer) return;
-    const q = challenge.questions[currentQ];
-    const isCorrect = selectedAnswer === q.correctAnswer;
+  const handleConfirm = async () => {
+    if (!selectedAnswer || confirming) return;
+    setConfirming(true);
+    try {
+      const { data } = await checkDailyAnswer({
+        date: challenge.date,
+        questionIndex: currentQ,
+        selectedAnswer,
+      });
 
-    const answerData = {
-      questionIndex: currentQ,
-      selectedAnswer,
-      isCorrect,
-      confidence: "medium",
-      timeTaken: timer,
-    };
+      const perQuestionTime = Math.max(
+        1,
+        Math.round(timer / Math.max(currentQ + 1, 1)),
+      );
 
-    setAnswers((prev) => [...prev, answerData]);
-    setShowResult(true);
+      setAnswers((prev) => [
+        ...prev,
+        {
+          questionIndex: currentQ,
+          selectedAnswer,
+          isCorrect: data.isCorrect,
+          confidence: "medium",
+          timeTaken: perQuestionTime,
+        },
+      ]);
+      setLastResult(data);
+      setShowResult(true);
+    } catch (err) {
+      console.error("Daily check failed:", err);
+    } finally {
+      setConfirming(false);
+    }
   };
 
   const handleNext = () => {
@@ -86,17 +110,17 @@ export default function DailyChallenge() {
     : 0;
 
   const handleSaveScore = async () => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
     try {
-      await addToLeaderboard({
-        userName,
-        score: correctCount,
-        accuracy,
-        speedScore: Math.max(0, 100 - timer),
-        finalScore: Math.round(accuracy * 0.7 + Math.max(0, 100 - timer) * 0.3),
-        topic: challenge.topic,
-        difficulty: challenge.difficulty,
-        totalQuestions: challenge.questions.length,
+      const res = await submitDailyChallenge({
+        date: challenge.date,
+        answers,
+        timeTaken: timer,
       });
+      await recordQuiz({ sessionId: res.data.sessionId });
       navigate("/leaderboard");
     } catch (err) {
       console.error("Save failed:", err);
@@ -239,10 +263,11 @@ export default function DailyChallenge() {
                     </div>
                     <div className="review-detail">
                       <span>
-                        Your answer: <strong>{ans?.selectedAnswer}</strong>
+                        Your answer: <strong>{ans?.selectedAnswer || "—"}</strong>
                       </span>
                       <span>
-                        Correct: <strong>{q.correctAnswer}</strong>
+                        Result:{" "}
+                        <strong>{ans?.isCorrect ? "Correct" : "Incorrect"}</strong>
                       </span>
                     </div>
                     {q.explanation && (
@@ -260,7 +285,8 @@ export default function DailyChallenge() {
 
   // ─── QUIZ ───
   const q = challenge.questions[currentQ];
-  const isCorrect = showResult ? selectedAnswer === q.correctAnswer : null;
+  const isCorrect = showResult ? lastResult?.isCorrect : null;
+  const correctLetter = showResult ? lastResult?.correctAnswer : null;
 
   return (
     <div className="daily-page">
@@ -294,7 +320,7 @@ export default function DailyChallenge() {
               let cls = "option-btn";
               if (selectedAnswer === letter) cls += " selected";
               if (showResult) {
-                if (letter === q.correctAnswer) cls += " correct";
+                if (letter === correctLetter) cls += " correct";
                 else if (letter === selectedAnswer && !isCorrect)
                   cls += " incorrect";
               }
@@ -316,9 +342,9 @@ export default function DailyChallenge() {
             <button
               className="btn btn-primary btn-block"
               onClick={handleConfirm}
-              disabled={!selectedAnswer}
+              disabled={!selectedAnswer || confirming}
             >
-              Confirm Answer
+              {confirming ? "Checking..." : "Confirm Answer"}
             </button>
           )}
 

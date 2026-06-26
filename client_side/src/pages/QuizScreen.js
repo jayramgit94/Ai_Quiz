@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
   addToLeaderboard,
+  checkQuizAnswer,
   generateQuiz,
   recordQuiz,
   submitQuiz,
@@ -37,11 +38,14 @@ export default function QuizScreen() {
   const [confidence, setConfidence] = useState("medium");
   const [showResult, setShowResult] = useState(false);
   const [answers, setAnswers] = useState([]);
+  const [lastResult, setLastResult] = useState(null);
+  const [confirming, setConfirming] = useState(false);
   const [timer, setTimer] = useState(0);
   const [error, setError] = useState(null);
 
   const timerRef = useRef(null);
   const questionStartTime = useRef(Date.now());
+  const answersRef = useRef([]);
 
   // Loading step animation
   useEffect(() => {
@@ -102,28 +106,90 @@ export default function QuizScreen() {
     setSelectedAnswer(letter);
   };
 
-  const handleConfirm = () => {
-    if (!selectedAnswer) return;
+  const handleConfirm = async () => {
+    if (!selectedAnswer || confirming) return;
+    setConfirming(true);
     const timeTaken = Math.round(
       (Date.now() - questionStartTime.current) / 1000,
     );
 
-    const correctAnswer = questions[currentIndex].correctAnswer || "";
-    const isCorrect = selectedAnswer === correctAnswer.charAt(0);
+    try {
+      const { data } = await checkQuizAnswer({
+        sessionId,
+        questionIndex: currentIndex,
+        selectedAnswer,
+      });
 
-    setAnswers((prev) => [
-      ...prev,
-      {
+      const entry = {
         questionIndex: currentIndex,
         selectedAnswer,
         confidence,
         timeTaken,
-        isCorrect,
-      },
-    ]);
-    setShowResult(true);
-    clearInterval(timerRef.current);
+        isCorrect: data.isCorrect,
+      };
+
+      const nextAnswers = [...answersRef.current, entry];
+      answersRef.current = nextAnswers;
+      setAnswers(nextAnswers);
+      setLastResult(data);
+      setShowResult(true);
+      clearInterval(timerRef.current);
+
+      setQuestions((prev) =>
+        prev.map((q, i) =>
+          i === currentIndex
+            ? {
+                ...q,
+                explanation: data.explanation || q.explanation,
+                interviewTip: data.interviewTip || q.interviewTip,
+                correctAnswer: data.correctAnswer,
+              }
+            : q,
+        ),
+      );
+    } catch (err) {
+      setError(
+        err.response?.data?.error || "Could not verify answer. Try again.",
+      );
+    } finally {
+      setConfirming(false);
+    }
   };
+
+  const handleSubmit = useCallback(
+    async (payloadAnswers) => {
+      try {
+        const res = await submitQuiz({ sessionId, answers: payloadAnswers });
+
+        if (user) {
+          try {
+            await addToLeaderboard({ sessionId, topic, difficulty });
+          } catch (e) {
+            console.warn("Leaderboard update failed:", e);
+          }
+        }
+
+        let xpData = null;
+        if (user) {
+          try {
+            const xpRes = await recordQuiz({ sessionId });
+            xpData = xpRes.data;
+            updateUser(xpRes.data.user);
+          } catch (e) {
+            console.warn("XP record failed:", e);
+          }
+        }
+
+        navigate("/score", {
+          state: { results: res.data, userName, topic, xpData },
+        });
+      } catch (err) {
+        console.error("Submit failed:", err);
+        setError(err.response?.data?.error || "Failed to submit quiz.");
+      }
+    },
+    [sessionId, user, topic, difficulty, userName, navigate, updateUser],
+  );
 
   const handleNext = useCallback(() => {
     if (currentIndex < questions.length - 1) {
@@ -131,90 +197,13 @@ export default function QuizScreen() {
       setSelectedAnswer(null);
       setConfidence("medium");
       setShowResult(false);
+      setLastResult(null);
       setTimer(0);
       questionStartTime.current = Date.now();
     } else {
-      // Quiz complete - submit
-      handleSubmit();
+      handleSubmit(answersRef.current);
     }
-    // eslint-disable-next-line
-  }, [currentIndex, questions.length]);
-
-  const handleSubmit = async () => {
-    try {
-      const finalAnswers =
-        answers.length === questions.length ? answers : [...answers];
-      const res = await submitQuiz({ sessionId, answers: finalAnswers });
-
-      // Add to leaderboard
-      try {
-        await addToLeaderboard({
-          userName,
-          score: res.data.score,
-          accuracy: res.data.accuracy,
-          speedScore: res.data.speedScore,
-          finalScore: res.data.finalScore,
-          topic,
-          difficulty,
-          totalQuestions: res.data.totalQuestions,
-        });
-      } catch (e) {
-        console.warn("Leaderboard update failed:", e);
-      }
-
-      // Record quiz for XP/achievements
-      let xpData = null;
-      if (user) {
-        try {
-          const xpRes = await recordQuiz({
-            sessionId,
-            topic,
-            difficulty,
-            accuracy: res.data.accuracy,
-            score: res.data.score,
-            totalQuestions: res.data.totalQuestions,
-            speedScore: res.data.speedScore,
-            finalScore: res.data.finalScore,
-            weakTopics: res.data.weakTopics,
-            strongTopics: res.data.strongTopics,
-            nextDifficulty: res.data.nextDifficulty,
-            detailedResults: res.data.detailedResults,
-          });
-          xpData = xpRes.data;
-          updateUser(xpData.user);
-        } catch (e) {
-          console.warn("XP record failed:", e);
-        }
-      }
-
-      navigate("/score", {
-        state: { results: res.data, userName, topic, xpData },
-      });
-    } catch (err) {
-      console.error("Submit failed:", err);
-      navigate("/score", {
-        state: {
-          results: {
-            score: answers.filter((a) => a.isCorrect).length,
-            totalQuestions: questions.length,
-            accuracy: Math.round(
-              (answers.filter((a) => a.isCorrect).length / questions.length) *
-                100,
-            ),
-            speedScore: 0,
-            finalScore: 0,
-            weakTopics: [],
-            strongTopics: [],
-            nextDifficulty: difficulty,
-            confidenceStats: {},
-            detailedResults: [],
-          },
-          userName,
-          topic,
-        },
-      });
-    }
-  };
+  }, [currentIndex, questions.length, handleSubmit]);
 
   // ─── LOADING ───
   if (loading) {
@@ -266,6 +255,9 @@ export default function QuizScreen() {
   const question = questions[currentIndex];
   const progress = ((currentIndex + 1) / questions.length) * 100;
   const lastAnswer = showResult ? answers[answers.length - 1] : null;
+  const correctLetter = (lastResult?.correctAnswer || question?.correctAnswer || "")
+    .charAt(0)
+    .toUpperCase();
 
   return (
     <div className="quiz-page">
@@ -310,9 +302,7 @@ export default function QuizScreen() {
             {question?.options?.map((opt, i) => {
               const letter = opt.charAt(0);
               const isSelected = selectedAnswer === letter;
-              const isCorrect =
-                showResult &&
-                letter === (question.correctAnswer || "").charAt(0);
+              const isCorrect = showResult && letter.toUpperCase() === correctLetter;
               const isWrong = showResult && isSelected && !isCorrect;
 
               return (
@@ -359,9 +349,9 @@ export default function QuizScreen() {
             <button
               className="btn btn-primary btn-block confirm-btn"
               onClick={handleConfirm}
-              disabled={!selectedAnswer}
+              disabled={!selectedAnswer || confirming}
             >
-              Confirm Answer
+              {confirming ? "Checking..." : "Confirm Answer"}
             </button>
           ) : (
             <div className="result-section animate-fade-in-up">

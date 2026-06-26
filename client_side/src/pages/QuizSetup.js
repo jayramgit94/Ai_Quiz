@@ -2,12 +2,14 @@ import { Rocket } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import { expandTopic } from "../services/api";
 import "./QuizSetup.css";
 
 export default function QuizSetup() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
   const userName = user?.displayName || "Guest";
   const [topic, setTopic] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
@@ -24,7 +26,9 @@ export default function QuizSetup() {
       setSubtopics(res.data.subtopics || []);
       setTopicExpanded(true);
     } catch (err) {
-      console.error("Topic expansion failed:", err);
+      toast.error(
+        err.response?.data?.error || "Could not expand topic. Try again.",
+      );
     }
     setLoadingTopics(false);
   };

@@ -27,6 +27,24 @@
   margin-top: 8px;
 }
 
+.dashboard-data-note {
+  margin-bottom: 1rem;
+  padding: 1rem 1.15rem;
+  border-radius: 18px;
+}
+
+.dashboard-data-note h3 {
+  margin: 0 0 0.45rem;
+  font-size: 1rem;
+}
+
+.dashboard-data-note p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
 /* Search */
 .dash-search {
   display: flex;

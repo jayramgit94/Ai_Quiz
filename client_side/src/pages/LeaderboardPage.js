@@ -1,11 +1,13 @@
 import { Medal, Trophy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "../context/ToastContext";
 import { getAllLeaderboard, getTodayLeaderboard } from "../services/api";
 import "./LeaderboardPage.css";
 
 export default function LeaderboardPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [tab, setTab] = useState("today");
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +27,8 @@ export default function LeaderboardPage() {
       setEntries(res.data);
     } catch (err) {
       console.error("Leaderboard load failed:", err);
+      toast.error(err.response?.data?.error || "Failed to load leaderboard.");
+      setEntries([]);
     }
     setLoading(false);
   };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -7,7 +7,7 @@ import "./AuthPage.css";
 
 export default function AuthPage({ mode = "login" }) {
   const navigate = useNavigate();
-  const { loginAction } = useAuth();
+  const { loginAction, user, loading: authLoading } = useAuth();
   const toast = useToast();
 
   const [isLogin, setIsLogin] = useState(mode === "login");
@@ -17,6 +17,22 @@ export default function AuthPage({ mode = "login" }) {
   const [country, setCountry] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [authLoading, user, navigate]);
+
+  if (authLoading || user) {
+    return (
+      <div className="auth-page">
+        <div className="loading-screen" style={{ minHeight: "60vh" }}>
+          <div className="spinner" />
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();

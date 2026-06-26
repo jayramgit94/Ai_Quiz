@@ -301,6 +301,16 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            <div className="card dashboard-data-note animate-fade-in-up delay-2">
+              <h3>How your data is stored</h3>
+              <p>
+                Quizzes save to <strong>QuizSession</strong> (scores, topics, answers).
+                Resume and document interviews save to dedicated MongoDB collections with
+                session IDs, evaluations, and anti-cheat telemetry. Your profile aggregates
+                XP, streak, and history — all tied to your account after sign-in.
+              </p>
+            </div>
+
             <div className="card activity-card animate-fade-in-up delay-3">
               <div className="activity-head">
                 <div>

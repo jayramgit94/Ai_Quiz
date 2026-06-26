@@ -9,6 +9,10 @@ const DocumentInterview = require("../models/DocumentInterview");
 const User = require("../models/User");
 const { authMiddleware } = require("./auth");
 const {
+  requireSessionOwner,
+  sanitizeDocumentSessionForClient,
+} = require("../utils/sessionHelpers");
+const {
   evaluateDocumentInterviewAnswer,
   extractQuestionAnswerPairsWithAI,
   generateDocumentIdealAnswer,
@@ -212,6 +216,7 @@ router.post("/generate-questions", authMiddleware, async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    if (!requireSessionOwner(session, req.userId, res)) return;
 
     const extracted = session.sourceDocument?.extracted || [];
     if (!extracted.length) {
@@ -287,6 +292,7 @@ router.post("/evaluate-answer", authMiddleware, async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    if (!requireSessionOwner(session, req.userId, res)) return;
 
     const minWords = getMinWordsForDifficulty(session.config?.difficulty);
     if (!safeTranscript || wordCount < minWords) {
@@ -367,6 +373,7 @@ router.post("/anti-cheat", authMiddleware, async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    if (!requireSessionOwner(session, req.userId, res)) return;
 
     if (type === "tab-switch") {
       session.antiCheating.tabSwitches += 1;
@@ -399,6 +406,7 @@ router.post("/complete", authMiddleware, async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    if (!requireSessionOwner(session, req.userId, res)) return;
 
     const responses = session.responses || [];
     const totalDuration = responses.reduce(
@@ -473,7 +481,7 @@ router.post("/complete", authMiddleware, async (req, res) => {
   }
 });
 
-router.get("/session/:sessionId", async (req, res) => {
+router.get("/session/:sessionId", authMiddleware, async (req, res) => {
   try {
     const session = await DocumentInterview.findOne({
       sessionId: req.params.sessionId,
@@ -482,17 +490,27 @@ router.get("/session/:sessionId", async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    if (!requireSessionOwner(session, req.userId, res)) return;
 
-    return res.json(session);
+    return res.json(sanitizeDocumentSessionForClient(session, { full: true }));
   } catch (err) {
     return res.status(500).json({ error: "Failed to fetch session" });
   }
 });
 
-router.get("/history/:userName", async (req, res) => {
+router.get("/history/:userName", authMiddleware, async (req, res) => {
   try {
+    const user = await User.findById(req.userId).select("displayName").lean();
+    const requested = String(req.params.userName || "").trim();
+    if (
+      !user?.displayName ||
+      user.displayName.toLowerCase() !== requested.toLowerCase()
+    ) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
     const sessions = await DocumentInterview.find({
-      userName: req.params.userName,
+      userId: req.userId,
       status: "completed",
     })
       .sort({ completedAt: -1 })

@@ -7,6 +7,7 @@ import {
   useLocation,
 } from "react-router-dom";
 import Navbar from "./components/Navbar";
+import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import AchievementsPage from "./pages/AchievementsPage";
@@ -123,7 +124,9 @@ function AnimatedRoutes() {
           path="/dashboard"
           element={
             <PageWrapper>
-              <DashboardPage />
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
             </PageWrapper>
           }
         />
@@ -147,7 +150,9 @@ function AnimatedRoutes() {
           path="/resume-interview"
           element={
             <PageWrapper>
-              <ResumeInterview />
+              <ProtectedRoute>
+                <ResumeInterview />
+              </ProtectedRoute>
             </PageWrapper>
           }
         />
@@ -155,7 +160,9 @@ function AnimatedRoutes() {
           path="/document-interview"
           element={
             <PageWrapper>
-              <DocumentInterview />
+              <ProtectedRoute>
+                <DocumentInterview />
+              </ProtectedRoute>
             </PageWrapper>
           }
         />
@@ -163,7 +170,9 @@ function AnimatedRoutes() {
           path="/achievements"
           element={
             <PageWrapper>
-              <AchievementsPage />
+              <ProtectedRoute>
+                <AchievementsPage />
+              </ProtectedRoute>
             </PageWrapper>
           }
         />

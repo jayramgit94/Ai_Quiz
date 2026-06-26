@@ -60,6 +60,7 @@ export const clearUserData = () => api.delete("/auth/clear-data");
 
 // ─── QUIZ ───
 export const generateQuiz = (data) => api.post("/quiz/generate", data);
+export const checkQuizAnswer = (data) => api.post("/quiz/check-answer", data);
 export const submitQuiz = (data) => api.post("/quiz/submit", data);
 export const getSession = (sessionId) => api.get(`/quiz/session/${sessionId}`);
 export const expandTopic = (keyword) =>
@@ -84,6 +85,10 @@ export const getMyProgress = () => api.get("/leaderboard/progress/me");
 
 // ─── DAILY CHALLENGE ───
 export const getDailyChallenge = () => api.get("/leaderboard/daily-challenge");
+export const checkDailyAnswer = (data) =>
+  api.post("/leaderboard/daily-challenge/check-answer", data);
+export const submitDailyChallenge = (data) =>
+  api.post("/leaderboard/daily-challenge/submit", data);
 
 // ─── RESUME INTERVIEW ───
 export const uploadResume = (formData) =>
